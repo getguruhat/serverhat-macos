@@ -1,0 +1,5 @@
+.build/
+.DS_Store
+LocalWeb.app/
+LocalWeb_*.zip
+*.dmg
