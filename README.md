@@ -13,7 +13,9 @@ so Claude Code, Codex or your own scripts can add and control servers for you.
 
 - A globe in the menu bar, with a list of your servers. Each shows whether it's
   **running**, **stopped**, **crashed** or has its **port in use**, and has Start/Stop,
-  Restart, Open in browser and View logs. **Start all** and **Stop all** are at the top.
+  Restart, Open in browser and View logs. Starting a server from the menu (or allowing
+  one) opens it in your browser once it's up. A running server shows its address as a
+  link. **Start all** and **Stop all** are in the Servers row when you have more than one.
 - Notices when a server crashes (and shows its last line of output) and when its port is
   already taken by something else (and which process that is).
 - Keeps a log per server, in the app and in `~/Library/Logs/ServerHat/<id>.log`.

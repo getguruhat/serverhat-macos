@@ -376,7 +376,11 @@ struct ServerRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.control))
             HStack(spacing: 8) {
-                Button("Allow") { manager.approve(server.id) }.buttonStyle(TintButtonStyle(color: Theme.accent))
+                Button("Allow") {
+                    manager.approve(server.id)
+                    manager.startAndOpen(server.id)
+                }
+                .buttonStyle(TintButtonStyle(color: Theme.accent))
                 Button("Remove") { confirmRemove() }.buttonStyle(TintButtonStyle(color: Theme.red))
                 Spacer()
                 Button("Edit…") { EditWindowController.show(manager: manager, editing: server) }
@@ -427,7 +431,7 @@ struct ServerRow: View {
                         .buttonStyle(CircleButtonStyle(size: 32, fill: Theme.red, foreground: .white))
                         .help("Stop").accessibilityLabel("Stop \(server.name)")
                 } else {
-                    Button { try? manager.start(server.id) } label: { Image(systemName: "play.fill") }
+                    Button { manager.startAndOpen(server.id) } label: { Image(systemName: "play.fill") }
                         .buttonStyle(CircleButtonStyle(size: 32, fill: Theme.accent, foreground: .white))
                         .disabled(state.status == .portInUse)
                         .help("Start").accessibilityLabel("Start \(server.name)")
@@ -604,7 +608,9 @@ enum ApprovalPrompt {
         alert.addButton(withTitle: "Remove")
         alert.addButton(withTitle: "Later")
         switch alert.runModal() {
-        case .alertFirstButtonReturn: manager.approve(server.id)
+        case .alertFirstButtonReturn:
+            manager.approve(server.id)
+            manager.startAndOpen(server.id)
         case .alertSecondButtonReturn: try? manager.remove(server.id)
         default: break
         }

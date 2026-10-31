@@ -115,7 +115,7 @@ final class LogBuffer: ObservableObject {
 /// Starts and stops the configured servers. Everything here runs on the main queue.
 final class ServerManager: ObservableObject {
     @Published private(set) var servers: [ServerConfig] = []
-    @Published private(set) var states: [String: ServerState] = [:]
+    @Published private(set) var states: [String: ServerState] = [:] { didSet { openWhenRunning() } }
     @Published private(set) var configError: String?
     /// Fingerprints of what the user has allowed to run. See `needsApproval`.
     @Published private(set) var approved: Set<String> = []
@@ -128,6 +128,8 @@ final class ServerManager: ObservableObject {
     private var waitingForEnvironment: [() -> Void] = []
     private var ticker: Timer?
     private var askedForApproval: [String: Date] = [:]
+    /// Servers the user started from the menu, to open in the browser once they're up.
+    private var openWhenUp = Set<String>()
     private static let approvalsKey = "approvedCommands"
 
     private final class RunningProcess {
@@ -410,6 +412,35 @@ final class ServerManager: ObservableObject {
         } else {
             if states[id]?.status != .portInUse { states[id] = ServerState() }
             try start(id)
+        }
+    }
+
+    /// Starts (or, for a running server, restarts) a server for the user and opens it in
+    /// the browser once it's running. Starts from the API don't open anything.
+    func startAndOpen(_ id: String) {
+        guard let server = server(id), server.openURL != nil else { try? start(id); return }
+        openWhenUp.insert(id)
+        do {
+            if running[id] != nil { try restart(id) } else { try start(id) }
+        } catch {
+            openWhenUp.remove(id)
+        }
+        openWhenRunning()
+    }
+
+    private func openWhenRunning() {
+        for id in openWhenUp {
+            switch states[id]?.status {
+            case .running:
+                openWhenUp.remove(id)
+                if let url = server(id)?.openURL { NSWorkspace.shared.open(url) }
+            case .starting, .stopping:
+                break
+            default:
+                // A restart passes through "stopped" on its way back up.
+                if restartAfterExit.contains(id) { break }
+                openWhenUp.remove(id) // crashed, failed or stopped: nothing to open
+            }
         }
     }
 
