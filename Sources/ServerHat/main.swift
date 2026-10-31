@@ -16,19 +16,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 enum Entry {
     static func main() {
-        // `LocalWeb --mcp` is the MCP server for Claude Code, Codex and other clients, not the app.
+        // `ServerHat --mcp` is the MCP server for Claude Code, Codex and other clients, not the app.
         if CommandLine.arguments.dropFirst().contains("--mcp") { MCPServer.run() }
-        LocalWebApp.main()
+        ServerHatApp.main()
     }
 }
 
-struct LocalWebApp: App {
+struct ServerHatApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var manager: ServerManager
     @StateObject private var updates: UpdateChecker
     private let api: APIServer
 
     init() {
+        Rename.copyOldDefaults()
         let manager = ServerManager()
         AppDelegate.manager = manager
         Notifier.shared.start(manager: manager)
@@ -36,7 +37,7 @@ struct LocalWebApp: App {
         api.start()
         self.api = api
         _manager = StateObject(wrappedValue: manager)
-        let updates = UpdateChecker(appName: "LocalWeb", repo: "getguruhat/localweb-macos")
+        let updates = UpdateChecker(appName: "ServerHat", repo: "getguruhat/serverhat-macos")
         updates.start()
         _updates = StateObject(wrappedValue: updates)
     }
@@ -195,7 +196,7 @@ struct MenuContent: View {
                 Link(destination: update.page) {
                     HStack {
                         Image(systemName: "arrow.down.circle.fill").font(.system(size: 18)).foregroundStyle(Theme.accent)
-                        Text("LocalWeb \(update.version) is available").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
+                        Text("ServerHat \(update.version) is available").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
                         Spacer()
                         Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.secondary)
                     }
@@ -226,7 +227,7 @@ struct MenuContent: View {
         HStack(spacing: 8) {
             HStack(spacing: 7) {
                 Image(systemName: "globe.americas.fill").font(.system(size: 16)).foregroundStyle(Theme.accent)
-                Text("LocalWeb").font(.system(size: 15, weight: .semibold))
+                Text("ServerHat").font(.system(size: 15, weight: .semibold))
             }
             .padding(.horizontal, 12).frame(height: 32)
             .background(Capsule().fill(Theme.card))
@@ -246,8 +247,8 @@ struct MenuContent: View {
                 Button("Copy MCP setup for Claude Code") { copyMCP(client: "claude", label: "Claude Code") }
                 Button("Copy MCP setup for Codex") { copyMCP(client: "codex", label: "Codex") }
                 Divider()
-                Button("About LocalWeb") { AboutWindowController.shared.show() }
-                Button("Quit LocalWeb (stops its servers)") { NSApplication.shared.terminate(nil) }
+                Button("About ServerHat") { AboutWindowController.shared.show() }
+                Button("Quit ServerHat (stops its servers)") { NSApplication.shared.terminate(nil) }
             } label: {
                 Image(systemName: "ellipsis")
             }
@@ -294,13 +295,13 @@ struct MenuContent: View {
     }
 
     private func copyMCP(client: String, label: String) {
-        let binary = Bundle.main.executablePath ?? "/Applications/LocalWeb.app/Contents/MacOS/LocalWeb"
+        let binary = Bundle.main.executablePath ?? "/Applications/ServerHat.app/Contents/MacOS/ServerHat"
         let command = client == "claude"
-            ? "claude mcp add --scope user localweb -- \(ServerManager.shellQuoted(binary)) --mcp"
-            : "codex mcp add localweb -- \(ServerManager.shellQuoted(binary)) --mcp"
+            ? "claude mcp add --scope user serverhat -- \(ServerManager.shellQuoted(binary)) --mcp"
+            : "codex mcp add serverhat -- \(ServerManager.shellQuoted(binary)) --mcp"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
-        note.show("Copied. Paste it in Terminal to add LocalWeb to \(label).")
+        note.show("Copied. Paste it in Terminal to add ServerHat to \(label).")
     }
 
     private func importLaunchJSON() {
@@ -317,7 +318,7 @@ struct MenuContent: View {
         do {
             let added = try manager.importLaunchJSON(at: url.path, approved: true)
             alert.messageText = added.isEmpty ? "Nothing new to import" : "Imported \(added.count) server\(added.count == 1 ? "" : "s")"
-            alert.informativeText = added.isEmpty ? "Every configuration in that launch.json is already in LocalWeb." : added.map(\.name).joined(separator: ", ")
+            alert.informativeText = added.isEmpty ? "Every configuration in that launch.json is already in ServerHat." : added.map(\.name).joined(separator: ", ")
         } catch {
             alert.messageText = "Couldn't import"
             alert.informativeText = error.localizedDescription
@@ -499,7 +500,7 @@ struct ServerRow: View {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "Remove \(server.name)?"
-        alert.informativeText = "LocalWeb stops it if it's running and forgets its settings. Its folder isn't touched."
+        alert.informativeText = "ServerHat stops it if it's running and forgets its settings. Its folder isn't touched."
         alert.addButton(withTitle: "Remove")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn { try? manager.remove(server.id) }
@@ -509,7 +510,7 @@ struct ServerRow: View {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "Stop the process using port \(server.port ?? 0)?"
-        alert.informativeText = (state.detail ?? "") + "\n\nLocalWeb didn't start it. It will be asked to quit (SIGTERM)."
+        alert.informativeText = (state.detail ?? "") + "\n\nServerHat didn't start it. It will be asked to quit (SIGTERM)."
         alert.addButton(withTitle: "Stop It")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn { kill(pid, SIGTERM) }
@@ -588,7 +589,7 @@ enum ApprovalPrompt {
         alert.messageText = "Allow \(server.name) to run?"
         var details = "Command: \(commandLine(server))\nFolder: \(server.cwd)"
         if !server.env.isEmpty { details += "\nEnvironment: " + server.env.keys.sorted().joined(separator: ", ") }
-        alert.informativeText = details + "\n\nIt was added or changed through LocalWeb's API (for example by Claude Code or Codex) or in servers.json. It will run as you."
+        alert.informativeText = details + "\n\nIt was added or changed through ServerHat's API (for example by Claude Code or Codex) or in servers.json. It will run as you."
         alert.addButton(withTitle: "Allow")
         alert.addButton(withTitle: "Remove")
         alert.addButton(withTitle: "Later")
@@ -618,7 +619,7 @@ enum LogWindowController {
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: view)
         window.center()
-        window.setFrameAutosaveName("LocalWebLogs")
+        window.setFrameAutosaveName("ServerHatLogs")
         windows[server.id] = window
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
             windows[server.id] = nil
@@ -735,9 +736,9 @@ struct EditView: View {
                 TextEditor(text: $form.env).font(.system(.body, design: .monospaced)).frame(height: 70)
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
             }
-            Toggle("Start this server when LocalWeb starts", isOn: $form.startAtLogin)
+            Toggle("Start this server when ServerHat starts", isOn: $form.startAtLogin)
             if form.startAtLogin {
-                Toggle("Open LocalWeb at login", isOn: $form.openAtLogin)
+                Toggle("Open ServerHat at login", isOn: $form.openAtLogin)
                     .onChange(of: form.openAtLogin) { setOpenAtLogin($0) }
             }
             if let error = form.error { Text(error).foregroundStyle(.red).font(.callout) }
@@ -785,7 +786,7 @@ struct EditView: View {
         } catch {
             form.error = error.localizedDescription
         }
-        if SMAppService.mainApp.status == .requiresApproval { form.error = "Allow LocalWeb in System Settings → General → Login Items." }
+        if SMAppService.mainApp.status == .requiresApproval { form.error = "Allow ServerHat in System Settings → General → Login Items." }
     }
 
     /// Splits like a shell would for simple cases: spaces separate, quotes group.
@@ -824,7 +825,7 @@ final class AboutWindowController {
         }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 390, height: 430),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "About LocalWeb"
+        window.title = "About ServerHat"
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = NSHostingView(rootView: AboutView())
@@ -843,7 +844,7 @@ struct AboutView: View {
                let icon = NSImage(contentsOf: iconURL) {
                 Image(nsImage: icon).resizable().scaledToFit().frame(width: 88, height: 88)
             }
-            Text("LocalWeb").font(.title2).bold()
+            Text("ServerHat").font(.title2).bold()
             Text("Version \(appVersion)").foregroundStyle(.secondary)
             Text("Your local web servers, one click away.").font(.headline)
             Text("Free and open source (MIT). No account, no analytics.")

@@ -27,7 +27,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     func approvalNeeded(_ server: ServerConfig) {
         let command = ([server.command] + server.args).map(ServerManager.shellQuoted).joined(separator: " ")
         post(.approval, server: server, title: "Allow \(server.name) to run?",
-             body: "\(command)\nin \(server.cwd). Click to review, or use the LocalWeb menu.")
+             body: "\(command)\nin \(server.cwd). Click to review, or use the ServerHat menu.")
     }
 
     private func post(_ kind: Kind, server: ServerConfig, title: String, body: String) {
@@ -44,7 +44,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    // LocalWeb is a menu-bar app, so show banners even while it counts as active.
+    // ServerHat is a menu-bar app, so show banners even while it counts as active.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .list, .sound])

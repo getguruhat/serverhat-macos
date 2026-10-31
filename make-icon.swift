@@ -24,7 +24,7 @@ image.unlockFocus()
 let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "icon.png"))
 
-let iconset = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("LocalWeb.iconset")
+let iconset = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ServerHat.iconset")
 try? FileManager.default.removeItem(at: iconset)
 try! FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
 for px in [16, 32, 64, 128, 256, 512, 1024] {

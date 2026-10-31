@@ -3,7 +3,7 @@ import Network
 import Security
 
 /// A small JSON API on 127.0.0.1 so Claude Code, Codex and scripts can configure
-/// and control LocalWeb. See README.md › API.
+/// and control ServerHat. See README.md › API.
 ///
 /// Every request needs `Authorization: Bearer <token>`, where the token is in a file
 /// only this user can read. Requests with another Host header (DNS rebinding) or
@@ -55,7 +55,7 @@ final class APIServer {
             "url": baseURL,
             "tokenFile": APIServer.tokenURL.path,
             "configFile": ConfigStore.fileURL.path,
-            "docs": "https://github.com/getguruhat/localweb-macos#api",
+            "docs": "https://github.com/getguruhat/serverhat-macos#api",
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev",
         ]
         if let data = try? JSONSerialization.data(withJSONObject: info, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) {
@@ -208,7 +208,7 @@ final class APIServer {
         do {
             switch (request.method, route.count) {
             case ("GET", 1) where route[0] == "health":
-                reply(Response(status: 200, body: ["ok": true, "app": "LocalWeb"]))
+                reply(Response(status: 200, body: ["ok": true, "app": "ServerHat"]))
             case ("GET", 1) where route[0] == "servers":
                 reply(Response(status: 200, body: ["servers": manager.servers.map(describe), "configFile": ConfigStore.fileURL.path,
                                                    "configError": manager.configError as Any? ?? NSNull()]))
@@ -366,7 +366,7 @@ final class APIServer {
         object["status"] = status
         if manager.needsApproval(server.id) {
             object["needsApproval"] = true
-            object["approvalNote"] = "New or changed command: it can't start until the user clicks Allow in the LocalWeb menu."
+            object["approvalNote"] = "New or changed command: it can't start until the user clicks Allow in the ServerHat menu."
         }
         object["log"] = manager.log(server.id).fileURL.path
         if let url = server.openURL { object["openURL"] = url.absoluteString }

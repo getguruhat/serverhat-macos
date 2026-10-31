@@ -1,10 +1,10 @@
-# LocalWeb
+# ServerHat
 
 **Your local web servers, one click away in the Mac menu bar. Free and open source.**
 
 No account, no analytics, nothing leaves your Mac.
 
-LocalWeb starts, stops, restarts and opens the little web servers you run while you
+ServerHat starts, stops, restarts and opens the little web servers you run while you
 work (a Node script, `npm run dev`, `python3 -m http.server`, anything with a command
 line), so you never have to keep a Terminal tab open for them. It also has a local API,
 so Claude Code, Codex or your own scripts can add and control servers for you.
@@ -16,24 +16,24 @@ so Claude Code, Codex or your own scripts can add and control servers for you.
   Restart, Open in browser and View logs. **Start all** and **Stop all** are at the top.
 - Notices when a server crashes (and shows its last line of output) and when its port is
   already taken by something else (and which process that is).
-- Keeps a log per server, in the app and in `~/Library/Logs/LocalWeb/<id>.log`.
+- Keeps a log per server, in the app and in `~/Library/Logs/ServerHat/<id>.log`.
 - Stores everything in one readable JSON file and picks up edits to it immediately.
 - Imports servers from Claude Code's `.claude/launch.json`.
 - Runs commands with the same `PATH` your login shell sets up (Homebrew, nvm, and so on),
   in their own process group, so Stop also ends whatever the server started.
-- Quitting LocalWeb stops the servers it started.
+- Quitting ServerHat stops the servers it started.
 
 ## Download
 
 ### macOS (13+, Apple silicon)
 
-Download `LocalWeb-<version>-Installer.dmg` from the [latest release](../../releases/latest),
-open it, and drag `LocalWeb.app` onto Applications. The app isn't notarized yet, so
+Download `ServerHat-<version>-Installer.dmg` from the [latest release](../../releases/latest),
+open it, and drag `ServerHat.app` onto Applications. The app isn't notarized yet, so
 approve **Open Anyway** in System Settings › Privacy & Security the first time.
 
 ## The config file
 
-`~/Library/Application Support/LocalWeb/servers.json`:
+`~/Library/Application Support/ServerHat/servers.json`:
 
 ```json
 {
@@ -61,12 +61,12 @@ approve **Open Anyway** in System Settings › Privacy & Security the first time
 | `cwd` | no | Folder the command runs in. `~` works. Defaults to your home folder. |
 | `command` | yes | A program on your shell's `PATH` (`node`, `npm`, `python3`) or a path to one. It is run directly, not through a shell, so no pipes or `&&`. |
 | `args` | no | Arguments, one string each. |
-| `port` | no | The port the server listens on. LocalWeb uses it to tell "starting" from "running" and to detect a port that's already in use. |
+| `port` | no | The port the server listens on. ServerHat uses it to tell "starting" from "running" and to detect a port that's already in use. |
 | `url` | no | What Open in browser opens. Defaults to `http://127.0.0.1:<port>`. |
 | `env` | no | Extra environment variables, `{"NAME": "value"}`. |
-| `startAtLogin` | no | Start this server whenever LocalWeb starts. Turn on **Open LocalWeb at login** (in the server's Edit window) to have that happen at login. |
+| `startAtLogin` | no | Start this server whenever ServerHat starts. Turn on **Open ServerHat at login** (in the server's Edit window) to have that happen at login. |
 
-Save the file and LocalWeb reloads it within a second. If the JSON is broken, the menu
+Save the file and ServerHat reloads it within a second. If the JSON is broken, the menu
 says where, and the last good settings stay in use. A server that's running keeps its old
 settings until you restart it. Removing a server from the file stops it.
 
@@ -75,17 +75,17 @@ settings until you restart it. Removing a server from the file stops it.
 Choose the import button (the tray with an arrow) and pick a project folder or its
 `.claude/launch.json`. Each configuration
 (`{name, runtimeExecutable, runtimeArgs, port, url}`) becomes a server that runs from the
-project folder. Configurations that are already in LocalWeb are skipped.
+project folder. Configurations that are already in ServerHat are skipped.
 
 ## Use it from Claude Code and Codex (MCP)
 
-LocalWeb has a built-in MCP server, so AI coding agents get it as tools instead of
+ServerHat has a built-in MCP server, so AI coding agents get it as tools instead of
 having to call the API with curl. In the menu, choose **⋯ › Copy MCP setup for Claude
 Code** (or **for Codex**) and paste the command into Terminal. It looks like:
 
 ```sh
-claude mcp add --scope user localweb -- /Applications/LocalWeb.app/Contents/MacOS/LocalWeb --mcp
-codex mcp add localweb -- /Applications/LocalWeb.app/Contents/MacOS/LocalWeb --mcp
+claude mcp add --scope user serverhat -- /Applications/ServerHat.app/Contents/MacOS/ServerHat --mcp
+codex mcp add serverhat -- /Applications/ServerHat.app/Contents/MacOS/ServerHat --mcp
 ```
 
 The agent then has `list_servers`, `get_server`, `start_server`, `stop_server`,
@@ -94,54 +94,54 @@ The agent then has `list_servers`, `get_server`, `start_server`, `stop_server`,
 and a failure comes back with the server's last lines of output. A server an agent adds or
 changes waits for you to allow it first (see [Approval](#approval)).
 
-`LocalWeb --mcp` speaks MCP over stdin and stdout and drives the running app through
-the API below. It opens LocalWeb if it isn't running, and it reads the token from the
+`ServerHat --mcp` speaks MCP over stdin and stdout and drives the running app through
+the API below. It opens ServerHat if it isn't running, and it reads the token from the
 token file itself, so the token never goes into an MCP config.
 
 ## API
 
-LocalWeb listens on `http://127.0.0.1:47317` (only on this Mac). Change the port with
-`defaults write com.guruhat.localweb apiPort -int 47400` and restart LocalWeb.
+ServerHat listens on `http://127.0.0.1:47317` (only on this Mac). Change the port with
+`defaults write com.guruhat.serverhat apiPort -int 47400` and restart ServerHat.
 
-`~/Library/Application Support/LocalWeb/api.json` says where the API is and where its
+`~/Library/Application Support/ServerHat/api.json` says where the API is and where its
 token is:
 
 ```json
-{ "url": "http://127.0.0.1:47317", "tokenFile": "~/Library/Application Support/LocalWeb/api-token", "configFile": "…/servers.json" }
+{ "url": "http://127.0.0.1:47317", "tokenFile": "~/Library/Application Support/ServerHat/api-token", "configFile": "…/servers.json" }
 ```
 
 ### Security
 
 - Every request except `GET /v1/health` needs `Authorization: Bearer <token>`. The token
   is created on first launch in `api-token`, readable only by you (mode 600, in a folder
-  with mode 700). Delete the file and restart LocalWeb to get a new one.
+  with mode 700). Delete the file and restart ServerHat to get a new one.
 - The `Host` header must be `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS
   rebinding.
 - Requests that carry an `Origin` header, or a `Sec-Fetch-Site` other than `none`, are
   refused, and CORS preflights are refused, so web pages can't use the API.
 - Request bodies must be JSON with `Content-Type: application/json`, at most 1 MB.
 
-Anyone holding the token can change what LocalWeb runs. Keep it out of repositories and
+Anyone holding the token can change what ServerHat runs. Keep it out of repositories and
 logs.
 
 ### Approval
 
 A server added through the API or MCP, or by editing `servers.json`, can't start until
 you allow it. The same goes for an existing server whose `command`, `args`, `cwd` or
-`env` changes (name, port, url and `startAtLogin` don't count). LocalWeb sends a
+`env` changes (name, port, url and `startAtLogin` don't count). ServerHat sends a
 notification, and the menu shows the server with its full command, folder and environment
-names, and **Allow** and **Remove** buttons. Servers you add or edit in LocalWeb's own
+names, and **Allow** and **Remove** buttons. Servers you add or edit in ServerHat's own
 windows, or import with the menu's import button, count as allowed. So do the servers you
 already had when you updated to a version with approvals.
 
 Until you allow it, `start` and `restart` answer `403` with an explanation. Add
 `?wait=<seconds>` and they wait that long for you to click Allow, then go ahead. A
-server waiting for you has `"needsApproval": true` in API responses. LocalWeb keeps what
+server waiting for you has `"needsApproval": true` in API responses. ServerHat keeps what
 you've allowed in its preferences, not in `servers.json`.
 
 ### Notifications
 
-LocalWeb sends a macOS notification when a server crashes (click it to see the log) and
+ServerHat sends a macOS notification when a server crashes (click it to see the log) and
 when a server is waiting for your approval (click it to review and allow it). macOS asks
 for permission the first time. Turn them off in System Settings › Notifications.
 
@@ -149,7 +149,7 @@ for permission the first time. Turn them off in System Settings › Notification
 
 ```sh
 LW=http://127.0.0.1:47317
-TOKEN=$(cat ~/Library/Application\ Support/LocalWeb/api-token)
+TOKEN=$(cat ~/Library/Application\ Support/ServerHat/api-token)
 auth=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
 ```
 
@@ -157,7 +157,7 @@ auth=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
 
 | Method and path | Does |
 | --- | --- |
-| `GET /v1/health` | `{"ok": true}` without a token; shows LocalWeb is running. |
+| `GET /v1/health` | `{"ok": true}` without a token; shows ServerHat is running. |
 | `GET /v1/servers` | All servers with their status. |
 | `POST /v1/servers` | Add a server. Body: the fields above. Returns it with `201`, or `409` if the id is taken. |
 | `GET /v1/servers/{id}` | One server with its status. |
@@ -179,7 +179,7 @@ Each server in a response has its settings plus:
 
 ```json
 "status": { "state": "running", "pid": 8101, "startedAt": "2026-10-30T23:06:47Z" },
-"log": "/Users/you/Library/Logs/LocalWeb/ai-experts.log",
+"log": "/Users/you/Library/Logs/ServerHat/ai-experts.log",
 "openURL": "http://127.0.0.1:4319"
 ```
 
@@ -218,14 +218,14 @@ curl -s "${auth[@]}" -X POST $LW/v1/import -d '{"path": "~/code/docs"}'
 Requires macOS 13 or later and Swift 5.9 or later (Xcode or the Command Line Tools).
 
 ```sh
-./build-app.sh            # builds LocalWeb.app and LocalWeb-Installer.dmg
+./build-app.sh            # builds ServerHat.app and ServerHat-Installer.dmg
 ./build-app.sh --no-dmg   # just the app
-open LocalWeb.app
+open ServerHat.app
 ```
 
 `swift make-icon.swift` redraws `icon.png` and `AppIcon.icns`.
 
-The code is in `Sources/LocalWeb/`:
+The code is in `Sources/ServerHat/`:
 
 - `Config.swift`: the servers.json format, the file watcher, and the launch.json importer.
 - `ServerManager.swift`: starting and stopping processes, logs, crash and port detection.
@@ -234,7 +234,7 @@ The code is in `Sources/LocalWeb/`:
 
 ## Support
 
-LocalWeb is free. If it saves you time, you can
+ServerHat is free. If it saves you time, you can
 [support GuruHat with a donation](https://www.paypal.com/donate/?hosted_button_id=FHGYWD46722JS).
 
 ## License

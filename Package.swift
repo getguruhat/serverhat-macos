@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "LocalWeb",
+    name: "ServerHat",
     platforms: [.macOS(.v13)],
-    targets: [.executableTarget(name: "LocalWeb", path: "Sources/LocalWeb")]
+    targets: [.executableTarget(name: "ServerHat", path: "Sources/ServerHat")]
 )

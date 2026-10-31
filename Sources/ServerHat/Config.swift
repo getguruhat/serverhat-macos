@@ -13,7 +13,7 @@ struct ServerConfig: Codable, Equatable, Identifiable {
     /// What "Open in browser" opens. Defaults to http://127.0.0.1:<port>.
     var url: String?
     var env: [String: String] = [:]
-    /// Start this server whenever LocalWeb starts (so at login, when LocalWeb opens at login).
+    /// Start this server whenever ServerHat starts (so at login, when ServerHat opens at login).
     var startAtLogin: Bool = false
 
     init(id: String, name: String, cwd: String, command: String, args: [String] = [], port: Int? = nil,
@@ -67,12 +67,13 @@ struct ConfigFile: Codable {
     var servers: [ServerConfig] = []
 }
 
-/// Reads and writes ~/Library/Application Support/LocalWeb/servers.json, and calls
+/// Reads and writes ~/Library/Application Support/ServerHat/servers.json, and calls
 /// `onChange` when someone else (a person, Claude Code, Codex) edits it.
 final class ConfigStore {
     static let folder: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let url = base.appendingPathComponent("LocalWeb", isDirectory: true)
+        let url = base.appendingPathComponent("ServerHat", isDirectory: true)
+        Rename.moveOldFolder(base.appendingPathComponent("LocalWeb", isDirectory: true), to: url)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
         return url
@@ -208,5 +209,25 @@ enum LaunchJSONImporter {
 
     private static func abbreviate(_ path: String) -> String {
         (path as NSString).abbreviatingWithTildeInPath
+    }
+}
+
+/// ServerHat used to be called LocalWeb. Its first launch moves LocalWeb's settings,
+/// token, logs and approvals over, so nothing has to be set up again.
+enum Rename {
+    static let oldBundleID = "com.guruhat.localweb"
+
+    static func moveOldFolder(_ old: URL, to new: URL) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: old.path), !fm.fileExists(atPath: new.path) else { return }
+        try? fm.moveItem(at: old, to: new)
+    }
+
+    /// Copies preferences (approvals, API port) that the new bundle id doesn't have yet.
+    static func copyOldDefaults() {
+        guard Bundle.main.bundleIdentifier != oldBundleID, let old = UserDefaults(suiteName: oldBundleID) else { return }
+        for key in ["approvedCommands", "apiPort"] where UserDefaults.standard.object(forKey: key) == nil {
+            if let value = old.object(forKey: key) { UserDefaults.standard.set(value, forKey: key) }
+        }
     }
 }

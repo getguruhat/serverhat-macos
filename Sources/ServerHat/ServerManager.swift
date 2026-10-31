@@ -25,10 +25,12 @@ struct ManagerError: LocalizedError {
 }
 
 /// The last lines a server printed, kept in memory for the menu and the API, and
-/// appended to ~/Library/Logs/LocalWeb/<id>.log.
+/// appended to ~/Library/Logs/ServerHat/<id>.log.
 final class LogBuffer: ObservableObject {
     static let folder: URL = {
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/LocalWeb", isDirectory: true)
+        let logs = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs", isDirectory: true)
+        let url = logs.appendingPathComponent("ServerHat", isDirectory: true)
+        Rename.moveOldFolder(logs.appendingPathComponent("LocalWeb", isDirectory: true), to: url)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }()
@@ -272,7 +274,7 @@ final class ServerManager: ObservableObject {
     /// True when a server's folder, command, arguments or environment is something the
     /// user hasn't allowed yet: it was added or changed through the API (so by an agent)
     /// or by editing servers.json. It can't start until the user clicks Allow. Changes
-    /// made in LocalWeb's own windows count as allowed.
+    /// made in ServerHat's own windows count as allowed.
     func needsApproval(_ id: String) -> Bool {
         guard let server = server(id) else { return false }
         return !approved.contains(ServerManager.fingerprint(server))
@@ -320,7 +322,7 @@ final class ServerManager: ObservableObject {
         guard let server = server(id) else { throw ManagerError(message: "no server \"\(id)\"", status: 404) }
         if needsApproval(id) {
             askForApproval(id)
-            throw ManagerError(message: "\(server.name) is waiting for approval: ask the user to click Allow in the LocalWeb menu (they got a notification)", status: 403)
+            throw ManagerError(message: "\(server.name) is waiting for approval: ask the user to click Allow in the ServerHat menu (they got a notification)", status: 403)
         }
         if let process = running[id] {
             // Start while it's still stopping means "start it again once it has stopped".
@@ -421,7 +423,7 @@ final class ServerManager: ObservableObject {
 
     var runningCount: Int { running.count }
 
-    /// Called when LocalWeb quits: stop everything and give it a moment to exit.
+    /// Called when ServerHat quits: stop everything and give it a moment to exit.
     func shutdown() {
         let pids = running.values.map(\.pid)
         for pid in pids { kill(-pid, SIGTERM) }
@@ -486,7 +488,7 @@ final class ServerManager: ObservableObject {
                 states[id]?.detail = "Running, but nothing is listening on port \(port)."
             }
         }
-        // Every few seconds, notice ports that something outside LocalWeb opened or closed.
+        // Every few seconds, notice ports that something outside ServerHat opened or closed.
         if Int(Date().timeIntervalSince1970) % 3 == 0 {
             for server in servers where running[server.id] == nil { refreshPort(server.id) }
         }
@@ -546,7 +548,7 @@ final class ServerManager: ObservableObject {
         let shell = ProcessInfo.processInfo.environment["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
-        process.arguments = ["-l", "-i", "-c", "printf '__LOCALWEB__%s__LOCALWEB__' \"$PATH\""]
+        process.arguments = ["-l", "-i", "-c", "printf '__SERVERHAT__%s__SERVERHAT__' \"$PATH\""]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -558,7 +560,7 @@ final class ServerManager: ObservableObject {
         process.waitUntilExit()
         timeout.cancel()
         let text = String(decoding: data, as: UTF8.self)
-        let parts = text.components(separatedBy: "__LOCALWEB__")
+        let parts = text.components(separatedBy: "__SERVERHAT__")
         guard parts.count >= 3, !parts[1].isEmpty else { return nil }
         return parts[1]
     }

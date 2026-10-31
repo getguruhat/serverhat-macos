@@ -1,7 +1,7 @@
 import Foundation
 
-/// `LocalWeb --mcp`: a Model Context Protocol server on stdin/stdout, so Claude Code,
-/// Codex and other MCP clients get LocalWeb as tools. It drives the running app through
+/// `ServerHat --mcp`: a Model Context Protocol server on stdin/stdout, so Claude Code,
+/// Codex and other MCP clients get ServerHat as tools. It drives the running app through
 /// the local API (opening the app if it isn't running) and reads the API token itself,
 /// so the token never appears in an MCP config or a chat.
 enum MCPServer {
@@ -33,13 +33,13 @@ enum MCPServer {
             reply(id, [
                 "protocolVersion": supportedVersions.contains(requested) ? requested : supportedVersions[0],
                 "capabilities": ["tools": [:] as [String: Any]],
-                "serverInfo": ["name": "localweb", "title": "LocalWeb", "version": appVersion],
+                "serverInfo": ["name": "serverhat", "title": "ServerHat", "version": appVersion],
                 "instructions": """
-                    LocalWeb runs the user's local web servers from the Mac menu bar. Use these tools instead \
+                    ServerHat runs the user's local web servers from the Mac menu bar. Use these tools instead \
                     of starting dev servers in your own shell, so they keep running after your session and the \
                     user can control them. List servers before adding one, and don't stop or remove servers the \
                     user didn't mention. A server you add, or whose command, folder or environment you \
-                    change, can't start until the user clicks Allow in LocalWeb (they get a notification); \
+                    change, can't start until the user clicks Allow in ServerHat (they get a notification); \
                     start_server and restart_server wait for that. Tell the user you're waiting for them.
                     """,
             ])
@@ -73,10 +73,10 @@ enum MCPServer {
         "cwd": ["type": "string", "description": "Absolute folder the command runs in. ~ works."],
         "command": ["type": "string", "description": "A program on the login shell's PATH (node, npm, python3) or a path to one. Run directly, not through a shell: no pipes, && or cd. For shell syntax use /bin/zsh with args [\"-lc\", \"…\"]."],
         "args": ["type": "array", "items": ["type": "string"], "description": "Arguments, one string each."],
-        "port": ["type": "integer", "description": "The port the server really listens on, so LocalWeb can tell when it's up."],
+        "port": ["type": "integer", "description": "The port the server really listens on, so ServerHat can tell when it's up."],
         "url": ["type": "string", "description": "What Open in browser opens. Defaults to http://127.0.0.1:<port>."],
         "env": ["type": "object", "additionalProperties": ["type": "string"], "description": "Extra environment variables."],
-        "startAtLogin": ["type": "boolean", "description": "Start this server whenever LocalWeb starts."],
+        "startAtLogin": ["type": "boolean", "description": "Start this server whenever ServerHat starts."],
     ]
 
     private static func tool(_ name: String, _ title: String, _ description: String, properties: [String: Any] = [:],
@@ -94,12 +94,12 @@ enum MCPServer {
 
     static let tools: [[String: Any]] = [
         tool("list_servers", "List servers",
-             "Every server in LocalWeb with its settings and status (stopped, starting, running, stopping, crashed, port-in-use or failed). Check this before adding a server.",
+             "Every server in ServerHat with its settings and status (stopped, starting, running, stopping, crashed, port-in-use or failed). Check this before adding a server.",
              readOnly: true),
         tool("get_server", "Get server", "One server's settings and status.",
              properties: idProperty, required: ["id"], readOnly: true),
         tool("start_server", "Start server",
-             "Start a server and wait until it's running or has failed. If it fails, the answer includes its recent output. A new or changed server first waits for the user to click Allow in LocalWeb; tell them to.",
+             "Start a server and wait until it's running or has failed. If it fails, the answer includes its recent output. A new or changed server first waits for the user to click Allow in ServerHat; tell them to.",
              properties: idProperty.merging(["wait": ["type": "integer", "description": "Seconds to wait, up to 60. Default 30."]]) { a, _ in a },
              required: ["id"]),
         tool("stop_server", "Stop server", "Stop a server (and whatever it started).",
@@ -112,7 +112,7 @@ enum MCPServer {
              properties: idProperty.merging(["lines": ["type": "integer", "description": "How many lines, up to 1000. Default 100."]]) { a, _ in a },
              required: ["id"], readOnly: true),
         tool("add_server", "Add server",
-             "Add a server to LocalWeb. The user has to allow it before it can run (they get a notification). Set start to true to wait for that and start it.",
+             "Add a server to ServerHat. The user has to allow it before it can run (they get a notification). Set start to true to wait for that and start it.",
              properties: serverFields.merging([
                 "id": ["type": "string", "description": "Short unique id. Made from name if left out."],
                 "start": ["type": "boolean", "description": "Start it after adding and wait until it's running."],
@@ -122,10 +122,10 @@ enum MCPServer {
              "Change some of a server's settings. Only the fields you send change; null clears port or url. Restart the server afterwards to use them. Changing command, args, cwd or env needs the user's approval again.",
              properties: serverFields.merging(idProperty) { a, _ in a }, required: ["id"]),
         tool("remove_server", "Remove server",
-             "Stop a server and remove it from LocalWeb. Its folder isn't touched. Only do this when the user asks.",
+             "Stop a server and remove it from ServerHat. Its folder isn't touched. Only do this when the user asks.",
              properties: idProperty, required: ["id"], destructive: true),
         tool("import_launch_json", "Import launch.json",
-             "Add the servers in a project's .claude/launch.json. Ones already in LocalWeb are skipped.",
+             "Add the servers in a project's .claude/launch.json. Ones already in ServerHat are skipped.",
              properties: ["path": ["type": "string", "description": "Absolute path to the project folder or its .claude/launch.json."]],
              required: ["path"]),
     ]
@@ -197,7 +197,7 @@ enum MCPServer {
 
 // MARK: API client
 
-/// Talks to the app's local API, opening LocalWeb first if it isn't running.
+/// Talks to the app's local API, opening ServerHat first if it isn't running.
 private final class API {
     static let shared = API()
 
@@ -219,7 +219,7 @@ private final class API {
         do {
             return try send(method, path, query: query, body: body)
         } catch {
-            // LocalWeb may have quit since the last call.
+            // ServerHat may have quit since the last call.
             try connect()
             return try send(method, path, query: query, body: body)
         }
@@ -227,7 +227,7 @@ private final class API {
 
     private func send(_ method: String, _ path: String, query: [String: String], body: [String: Any]?) throws -> Answer {
         guard let base, var components = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
-            throw Failure(errorDescription: "LocalWeb's API address is unknown")
+            throw Failure(errorDescription: "ServerHat's API address is unknown")
         }
         if !query.isEmpty { components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) } }
         // Up to 60 s waiting for approval, then up to 60 s for the server to come up.
@@ -252,7 +252,7 @@ private final class API {
             }
         }
         guard base != nil, !token.isEmpty else {
-            throw Failure(errorDescription: "LocalWeb isn't running and couldn't be opened. Ask the user to open LocalWeb from Applications.")
+            throw Failure(errorDescription: "ServerHat isn't running and couldn't be opened. Ask the user to open ServerHat from Applications.")
         }
     }
 
@@ -275,12 +275,12 @@ private final class API {
         return true
     }
 
-    /// Opens the LocalWeb.app this binary belongs to, or the installed one, in the background.
+    /// Opens the ServerHat.app this binary belongs to, or the installed one, in the background.
     private func openApp() {
         let bundle = Bundle.main.bundleURL
         let open = Process()
         open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        open.arguments = bundle.pathExtension == "app" ? ["-g", bundle.path] : ["-g", "-b", "com.guruhat.localweb"]
+        open.arguments = bundle.pathExtension == "app" ? ["-g", bundle.path] : ["-g", "-b", "com.guruhat.serverhat"]
         open.standardOutput = FileHandle.nullDevice
         open.standardError = FileHandle.nullDevice
         try? open.run()
@@ -289,7 +289,7 @@ private final class API {
 
     private static func perform(_ request: URLRequest) throws -> (Int, Data) {
         let done = DispatchSemaphore(value: 0)
-        var outcome: Result<(Int, Data), Error> = .failure(Failure(errorDescription: "no answer from LocalWeb"))
+        var outcome: Result<(Int, Data), Error> = .failure(Failure(errorDescription: "no answer from ServerHat"))
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error {
                 outcome = .failure(error)
