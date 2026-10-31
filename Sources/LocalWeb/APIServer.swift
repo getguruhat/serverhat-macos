@@ -242,17 +242,14 @@ final class APIServer {
                 reply(Response(status: 200, body: ["id": id, "lines": log.tail(count), "file": log.fileURL.path]))
             case ("POST", 3) where route[0] == "servers" && ["start", "stop", "restart"].contains(route[2]):
                 let id = route[1]
-                switch route[2] {
-                case "start": try manager.start(id)
-                case "stop":
-                    guard manager.server(id) != nil else { throw ManagerError(message: "no server \"\(id)\"", status: 404) }
-                    manager.stop(id)
-                default: try manager.restart(id)
-                }
+                guard manager.server(id) != nil else { throw ManagerError(message: "no server \"\(id)\"", status: 404) }
                 let wait = min(60, Double(request.query["wait"] ?? "") ?? 0)
-                waitUntilSettled(id, seconds: wait) { [weak self] in
-                    guard let self, let server = self.manager.server(id) else { return reply(.error(404, "no server \"\(id)\"")) }
-                    reply(Response(status: 200, body: self.describe(server)))
+                if route[2] != "stop" && manager.needsApproval(id) && wait > 0 {
+                    // Give the user the wait time to click Allow, then go ahead (or explain).
+                    manager.askForApproval(id)
+                    waitForApproval(id, seconds: wait) { [weak self] in self?.control(id, route[2], wait: wait, reply: reply) }
+                } else {
+                    control(id, route[2], wait: wait, reply: reply)
                 }
             default:
                 reply(.error(404, "no route for \(request.method) \(request.path)"))
@@ -291,6 +288,34 @@ final class APIServer {
         default:
             reply(.error(405, "use GET, PATCH, PUT or DELETE"))
         }
+    }
+
+    private func control(_ id: String, _ action: String, wait: Double, reply: @escaping (Response) -> Void) {
+        do {
+            switch action {
+            case "start": try manager.start(id)
+            case "stop": manager.stop(id)
+            default: try manager.restart(id)
+            }
+        } catch let error as ManagerError {
+            return reply(.error(error.status, error.message))
+        } catch {
+            return reply(.error(400, error.localizedDescription))
+        }
+        waitUntilSettled(id, seconds: wait) { [weak self] in
+            guard let self, let server = self.manager.server(id) else { return reply(.error(404, "no server \"\(id)\"")) }
+            reply(Response(status: 200, body: self.describe(server)))
+        }
+    }
+
+    /// Calls back once the user has allowed the server (or it's gone), or after `seconds`.
+    private func waitForApproval(_ id: String, seconds: Double, then done: @escaping () -> Void) {
+        let deadline = Date().addingTimeInterval(seconds)
+        func check() {
+            if Date() >= deadline || !manager.needsApproval(id) { return done() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: check)
+        }
+        check()
     }
 
     /// Calls back once the server is no longer starting or stopping, or after `seconds`.
@@ -339,6 +364,10 @@ final class APIServer {
         if let started = state.startedAt { status["startedAt"] = ISO8601DateFormatter().string(from: started) }
         if let code = state.exitCode { status["exitCode"] = Int(code) }
         object["status"] = status
+        if manager.needsApproval(server.id) {
+            object["needsApproval"] = true
+            object["approvalNote"] = "New or changed command: it can't start until the user clicks Allow in the LocalWeb menu."
+        }
         object["log"] = manager.log(server.id).fileURL.path
         if let url = server.openURL { object["openURL"] = url.absoluteString }
         return object

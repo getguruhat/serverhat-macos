@@ -14,6 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
+enum Entry {
+    static func main() {
+        // `LocalWeb --mcp` is the MCP server for Claude Code, Codex and other clients, not the app.
+        if CommandLine.arguments.dropFirst().contains("--mcp") { MCPServer.run() }
+        LocalWebApp.main()
+    }
+}
+
 struct LocalWebApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var manager: ServerManager
@@ -23,6 +31,7 @@ struct LocalWebApp: App {
     init() {
         let manager = ServerManager()
         AppDelegate.manager = manager
+        Notifier.shared.start(manager: manager)
         let api = APIServer(manager: manager)
         api.start()
         self.api = api
@@ -38,77 +47,256 @@ struct LocalWebApp: App {
         } label: {
             let running = manager.states.values.filter { $0.status == .running || $0.status == .starting }.count
             let crashed = manager.states.values.contains { $0.status == .crashed || $0.status == .failed }
-            Image(systemName: crashed ? "exclamationmark.triangle" : running > 0 ? "globe.americas.fill" : "globe.americas")
+            let pending = !manager.pendingApprovals.isEmpty
+            Image(systemName: crashed ? "exclamationmark.triangle" : pending ? "hand.raised" : running > 0 ? "globe.americas.fill" : "globe.americas")
             if running > 0 { Text("\(running)") }
         }
         .menuBarExtraStyle(.window)
     }
 }
 
+// MARK: Theme
+
+/// The menu's own light palette: grey page, white cards, vivid accents.
+enum Theme {
+    static let page = Color(red: 0.953, green: 0.957, blue: 0.969)
+    static let card = Color.white
+    static let accent = Color(red: 0.263, green: 0.384, blue: 1.0)
+    static let green = Color(red: 0.086, green: 0.678, blue: 0.369)
+    static let red = Color(red: 0.882, green: 0.227, blue: 0.227)
+    static let orange = Color(red: 0.961, green: 0.502, blue: 0.098)
+    static let yellow = Color(red: 0.937, green: 0.659, blue: 0.0)
+    static let text = Color(red: 0.102, green: 0.110, blue: 0.137)
+    static let secondary = Color(red: 0.420, green: 0.443, blue: 0.494)
+    static let grey = Color(red: 0.600, green: 0.616, blue: 0.651)
+    static let stroke = Color.black.opacity(0.08)
+    static let control = Color(red: 0.937, green: 0.941, blue: 0.953)
+}
+
+struct PillButtonStyle: ButtonStyle {
+    var color: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 38)
+            .background(Capsule().fill(color.opacity(configuration.isPressed ? 0.8 : 1)))
+            .contentShape(Capsule())
+    }
+}
+
+/// A small tinted capsule, for secondary actions such as Start all.
+struct TintButtonStyle: ButtonStyle {
+    var color: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 10).frame(height: 24)
+            .background(Capsule().fill(color.opacity(configuration.isPressed ? 0.2 : 0.12)))
+            .contentShape(Capsule())
+    }
+}
+
+struct CircleButtonStyle: ButtonStyle {
+    var size: CGFloat = 30
+    var fill: Color = Theme.control
+    var foreground: Color = Theme.text
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundStyle(foreground)
+            .frame(width: size, height: size)
+            .background(Circle().fill(fill))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.35)
+            .contentShape(Circle())
+    }
+}
+
+extension View {
+    func card(padding: CGFloat = 14) -> some View {
+        self.padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.stroke))
+    }
+}
+
 // MARK: Menu
+
+/// A short confirmation under the menu, such as "Copied". (@State needs a macro plugin
+/// the command-line toolchain lacks.)
+final class Note: ObservableObject {
+    @Published private(set) var text: String?
+    private var hide: DispatchWorkItem?
+
+    func show(_ text: String) {
+        self.text = text
+        hide?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.text = nil }
+        hide = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: work)
+    }
+}
 
 struct MenuContent: View {
     @ObservedObject var manager: ServerManager
     @ObservedObject var updates: UpdateChecker
     let api: APIServer
+    @StateObject private var note = Note()
+
+    private var activeCount: Int { manager.states.values.filter { $0.status == .running || $0.status == .starting }.count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("LocalWeb").font(.headline)
-                Spacer()
-                Button("Start all") { manager.startAll() }.disabled(manager.servers.isEmpty)
-                Button("Stop all") { manager.stopAll() }.disabled(manager.runningCount == 0)
-            }
-            .controlSize(.small)
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            if manager.servers.isEmpty { emptyState }
 
-            if let error = manager.configError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-            }
-            if let problem = api.problem {
-                Label(problem, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-            }
+            if let error = manager.configError { notice(error, color: Theme.orange) }
+            if let problem = api.problem { notice(problem, color: Theme.orange) }
 
-            if manager.servers.isEmpty {
-                Text("No servers yet. Add one, import a .claude/launch.json, or ask Claude Code or Codex to set one up (see the README).")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 6)
-            } else {
+            if !manager.servers.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Servers").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.secondary)
+                    if activeCount > 0 {
+                        Text("\(activeCount) running").font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.green)
+                    }
+                    Spacer()
+                    // With one server its own play and stop buttons are enough.
+                    if manager.servers.count > 1 {
+                        if activeCount < manager.servers.count {
+                            Button("Start all") { manager.startAll() }.buttonStyle(TintButtonStyle(color: Theme.accent))
+                        }
+                        if manager.runningCount > 0 {
+                            Button("Stop all") { manager.stopAll() }.buttonStyle(TintButtonStyle(color: Theme.red))
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+                .frame(minHeight: 26)
+
                 ScrollView {
-                    VStack(spacing: 2) {
+                    VStack(spacing: 8) {
                         ForEach(manager.servers) { server in
                             ServerRow(manager: manager, server: server, state: manager.state(server.id))
                         }
                     }
                 }
-                .frame(maxHeight: 420)
+                .frame(maxHeight: 400)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
             if let update = updates.available {
-                Link("LocalWeb \(update.version) is available ›", destination: update.page).font(.caption)
+                Link(destination: update.page) {
+                    HStack {
+                        Image(systemName: "arrow.down.circle.fill").font(.system(size: 18)).foregroundStyle(Theme.accent)
+                        Text("LocalWeb \(update.version) is available").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.secondary)
+                    }
+                    .card(padding: 12)
+                }
+                .buttonStyle(.plain)
             }
-            Divider()
-            HStack(spacing: 12) {
-                iconButton("plus", "Add server") { EditWindowController.show(manager: manager, editing: nil) }
-                iconButton("square.and.arrow.down", "Import .claude/launch.json…") { importLaunchJSON() }
-                iconButton("curlybraces", "Open servers.json") { NSWorkspace.shared.open(manager.configFileURL) }
-                Spacer()
-                iconButton("info.circle", "About LocalWeb") { AboutWindowController.shared.show() }
-                iconButton("power", "Quit LocalWeb (stops its servers)") { NSApplication.shared.terminate(nil) }
+
+            if let copied = note.text {
+                Label(copied, systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.green)
+                    .padding(.horizontal, 4)
             }
         }
-        .padding(12)
-        .frame(width: 360)
+        .padding(14)
+        .frame(width: 380)
+        .foregroundStyle(Theme.text)
+        // Always light and opaque, whatever the system appearance.
+        .background(Theme.page)
+        .environment(\.colorScheme, .light)
+        .preferredColorScheme(.light)
     }
 
-    private func iconButton(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol).frame(width: 28, height: 24) }
-            .buttonStyle(.borderless)
-            .help(help)
-            .accessibilityLabel(help)
+    private var header: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "globe.americas.fill").font(.system(size: 16)).foregroundStyle(Theme.accent)
+                Text("LocalWeb").font(.system(size: 15, weight: .semibold))
+            }
+            .padding(.horizontal, 12).frame(height: 32)
+            .background(Capsule().fill(Theme.card))
+            .overlay(Capsule().strokeBorder(Theme.stroke))
+
+            Spacer()
+
+            Button { EditWindowController.show(manager: manager, editing: nil) } label: { Image(systemName: "plus") }
+                .buttonStyle(CircleButtonStyle(size: 32, fill: Theme.card))
+                .overlay(Circle().strokeBorder(Theme.stroke))
+                .help("Add server").accessibilityLabel("Add server")
+
+            Menu {
+                Button("Import .claude/launch.json…") { importLaunchJSON() }
+                Button("Open servers.json") { NSWorkspace.shared.open(manager.configFileURL) }
+                Divider()
+                Button("Copy MCP setup for Claude Code") { copyMCP(client: "claude", label: "Claude Code") }
+                Button("Copy MCP setup for Codex") { copyMCP(client: "codex", label: "Codex") }
+                Divider()
+                Button("About LocalWeb") { AboutWindowController.shared.show() }
+                Button("Quit LocalWeb (stops its servers)") { NSApplication.shared.terminate(nil) }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 32, height: 32)
+            .background(Circle().fill(Theme.card))
+            .overlay(Circle().strokeBorder(Theme.stroke))
+            .help("More")
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                Image(systemName: "globe.americas")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(Theme.accent.opacity(0.13)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No servers yet").font(.system(size: 19, weight: .semibold))
+                    Text("Add one, import a launch.json, or ask Claude Code or Codex.")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack(spacing: 8) {
+                Button("Add a server") { EditWindowController.show(manager: manager, editing: nil) }
+                    .buttonStyle(PillButtonStyle(color: Theme.accent))
+                Button("Import launch.json") { importLaunchJSON() }
+                    .buttonStyle(PillButtonStyle(color: Theme.text))
+            }
+        }
+        .card(padding: 16)
+    }
+
+    private func notice(_ text: String, color: Color) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(color)
+            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+        }
+        .card(padding: 12)
+    }
+
+    private func copyMCP(client: String, label: String) {
+        let binary = Bundle.main.executablePath ?? "/Applications/LocalWeb.app/Contents/MacOS/LocalWeb"
+        let command = client == "claude"
+            ? "claude mcp add --scope user localweb -- \(ServerManager.shellQuoted(binary)) --mcp"
+            : "codex mcp add localweb -- \(ServerManager.shellQuoted(binary)) --mcp"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+        note.show("Copied. Paste it in Terminal to add LocalWeb to \(label).")
     }
 
     private func importLaunchJSON() {
@@ -123,7 +311,7 @@ struct MenuContent: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let alert = NSAlert()
         do {
-            let added = try manager.importLaunchJSON(at: url.path)
+            let added = try manager.importLaunchJSON(at: url.path, approved: true)
             alert.messageText = added.isEmpty ? "Nothing new to import" : "Imported \(added.count) server\(added.count == 1 ? "" : "s")"
             alert.informativeText = added.isEmpty ? "Every configuration in that launch.json is already in LocalWeb." : added.map(\.name).joined(separator: ", ")
         } catch {
@@ -142,29 +330,100 @@ struct ServerRow: View {
     private var isActive: Bool { [.running, .starting, .stopping].contains(state.status) }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle().fill(color).frame(width: 9, height: 9).padding(.top, 5)
-                .accessibilityLabel(statusText)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(server.name).fontWeight(.medium).lineLimit(1)
-                    if let port = server.port { Text(":\(String(port))").font(.caption).foregroundStyle(.secondary) }
+        if manager.needsApproval(server.id) { pending } else { normal }
+    }
+
+    /// A server added or changed through the API or servers.json, waiting for the user.
+    private var pending: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.orange)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Theme.orange.opacity(0.13)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(server.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    Text(isActive ? "Changed. Allow the new settings to restart it." : "New. Allow it to run this command?")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.orange)
                 }
-                Text(state.detail ?? statusText)
-                    .font(.caption).foregroundStyle(state.status == .crashed || state.status == .failed ? .red : .secondary)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(ApprovalPrompt.commandLine(server))
+                    .font(.system(size: 12, design: .monospaced)).lineLimit(3).textSelection(.enabled)
+                Text("in \(server.cwd)").font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1).truncationMode(.middle)
+                if !server.env.isEmpty {
+                    Text("with " + server.env.keys.sorted().joined(separator: ", "))
+                        .font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.control))
+            HStack(spacing: 8) {
+                Button("Allow") { manager.approve(server.id) }.buttonStyle(TintButtonStyle(color: Theme.accent))
+                Button("Remove") { confirmRemove() }.buttonStyle(TintButtonStyle(color: Theme.red))
+                Spacer()
+                Button("Edit…") { EditWindowController.show(manager: manager, editing: server) }
+                    .buttonStyle(TintButtonStyle(color: Theme.secondary))
+            }
+        }
+        .card(padding: 12)
+    }
+
+    private var normal: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(color.opacity(0.13)))
+                .accessibilityLabel(statusText)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(server.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    if let port = server.port, !(state.status == .running && server.openURL != nil) {
+                        Text(":\(String(port))").font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.secondary)
+                    }
+                }
+                if state.status == .running, let url = server.openURL {
+                    // The address itself, so a closed browser tab is one click away.
+                    Button { NSWorkspace.shared.open(url) } label: {
+                        HStack(spacing: 3) {
+                            Text(ServerRow.display(url)).lineLimit(1).truncationMode(.middle)
+                            Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold))
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open \(url.absoluteString)")
+                } else {
+                    Text(state.detail ?? statusText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(color == Theme.grey ? Theme.secondary : color)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 4)
-            HStack(spacing: 0) {
+            HStack(spacing: 6) {
                 if isActive {
-                    action("stop.fill", "Stop") { manager.stop(server.id) }
+                    Button { manager.stop(server.id) } label: { Image(systemName: "stop.fill") }
+                        .buttonStyle(CircleButtonStyle(size: 32, fill: Theme.red, foreground: .white))
+                        .help("Stop").accessibilityLabel("Stop \(server.name)")
                 } else {
-                    action("play.fill", "Start") { try? manager.start(server.id) }
+                    Button { try? manager.start(server.id) } label: { Image(systemName: "play.fill") }
+                        .buttonStyle(CircleButtonStyle(size: 32, fill: Theme.accent, foreground: .white))
                         .disabled(state.status == .portInUse)
+                        .help("Start").accessibilityLabel("Start \(server.name)")
                 }
-                action("arrow.clockwise", "Restart") { try? manager.restart(server.id) }
-                action("safari", "Open in browser") { if let url = server.openURL { NSWorkspace.shared.open(url) } }
+                Button { try? manager.restart(server.id) } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(CircleButtonStyle(size: 28))
+                    .help("Restart").accessibilityLabel("Restart \(server.name)")
+                Button { if let url = server.openURL { NSWorkspace.shared.open(url) } } label: { Image(systemName: "safari") }
+                    .buttonStyle(CircleButtonStyle(size: 28))
                     .disabled(server.openURL == nil)
+                    .help("Open in browser").accessibilityLabel("Open \(server.name) in browser")
                 Menu {
                     Button("View logs") { LogWindowController.show(manager: manager, server: server) }
                     Button("Edit…") { EditWindowController.show(manager: manager, editing: server) }
@@ -176,26 +435,28 @@ struct ServerRow: View {
                     Divider()
                     Button("Remove…") { confirmRemove() }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .frame(width: 26)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Theme.control))
                 .help("More")
             }
         }
-        .padding(.vertical, 5).padding(.horizontal, 6)
+        .card(padding: 12)
         .contextMenu {
             Button("View logs") { LogWindowController.show(manager: manager, server: server) }
             Button("Edit…") { EditWindowController.show(manager: manager, editing: server) }
         }
     }
 
-    private func action(_ symbol: String, _ help: String, perform: @escaping () -> Void) -> some View {
-        Button(action: perform) { Image(systemName: symbol).frame(width: 24, height: 22) }
-            .buttonStyle(.borderless)
-            .help(help)
-            .accessibilityLabel("\(help) \(server.name)")
+    /// "127.0.0.1:4319" for http://127.0.0.1:4319/, keeping any path.
+    static func display(_ url: URL) -> String {
+        var text = url.absoluteString
+        for prefix in ["http://", "https://"] where text.hasPrefix(prefix) { text.removeFirst(prefix.count) }
+        if text.hasSuffix("/") { text.removeLast() }
+        return text
     }
 
     private var statusText: String {
@@ -210,13 +471,23 @@ struct ServerRow: View {
         }
     }
 
+    private var symbol: String {
+        switch state.status {
+        case .running: return "bolt.fill"
+        case .starting, .stopping: return "hourglass"
+        case .crashed, .failed: return "exclamationmark.triangle.fill"
+        case .portInUse: return "exclamationmark.circle.fill"
+        case .stopped: return "globe.americas"
+        }
+    }
+
     private var color: Color {
         switch state.status {
-        case .running: return .green
-        case .starting, .stopping: return .yellow
-        case .crashed, .failed: return .red
-        case .portInUse: return .orange
-        case .stopped: return .gray.opacity(0.5)
+        case .running: return Theme.green
+        case .starting, .stopping: return Theme.yellow
+        case .crashed, .failed: return Theme.red
+        case .portInUse: return Theme.orange
+        case .stopped: return Theme.grey
         }
     }
 
@@ -238,6 +509,33 @@ struct ServerRow: View {
         alert.addButton(withTitle: "Stop It")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn { kill(pid, SIGTERM) }
+    }
+}
+
+// MARK: Approval
+
+enum ApprovalPrompt {
+    static func commandLine(_ server: ServerConfig) -> String {
+        ([server.command] + server.args).map(ServerManager.shellQuoted).joined(separator: " ")
+    }
+
+    /// The same choice as the menu's Allow and Remove, for when the user clicks the notification.
+    static func ask(manager: ServerManager, server: ServerConfig) {
+        guard manager.needsApproval(server.id) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Allow \(server.name) to run?"
+        var details = "Command: \(commandLine(server))\nFolder: \(server.cwd)"
+        if !server.env.isEmpty { details += "\nEnvironment: " + server.env.keys.sorted().joined(separator: ", ") }
+        alert.informativeText = details + "\n\nIt was added or changed through LocalWeb's API (for example by Claude Code or Codex) or in servers.json. It will run as you."
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Later")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: manager.approve(server.id)
+        case .alertSecondButtonReturn: try? manager.remove(server.id)
+        default: break
+        }
     }
 }
 
@@ -405,7 +703,8 @@ struct EditView: View {
                                   command: form.command.trimmingCharacters(in: .whitespaces), args: EditView.splitArguments(form.args),
                                   port: Int(portNumber), url: form.url.isEmpty ? nil : form.url, env: environment, startAtLogin: form.startAtLogin)
         do {
-            if let original { try manager.update(original.id, to: config) } else { try manager.add(config) }
+            // Saving here is the user's own change, so it counts as allowed.
+            if let original { try manager.update(original.id, to: config, approved: true) } else { try manager.add(config, approved: true) }
             close()
         } catch {
             form.error = error.localizedDescription

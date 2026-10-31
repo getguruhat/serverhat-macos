@@ -77,6 +77,27 @@ Choose the import button (the tray with an arrow) and pick a project folder or i
 (`{name, runtimeExecutable, runtimeArgs, port, url}`) becomes a server that runs from the
 project folder. Configurations that are already in LocalWeb are skipped.
 
+## Use it from Claude Code and Codex (MCP)
+
+LocalWeb has a built-in MCP server, so AI coding agents get it as tools instead of
+having to call the API with curl. In the menu, choose **⋯ › Copy MCP setup for Claude
+Code** (or **for Codex**) and paste the command into Terminal. It looks like:
+
+```sh
+claude mcp add --scope user localweb -- /Applications/LocalWeb.app/Contents/MacOS/LocalWeb --mcp
+codex mcp add localweb -- /Applications/LocalWeb.app/Contents/MacOS/LocalWeb --mcp
+```
+
+The agent then has `list_servers`, `get_server`, `start_server`, `stop_server`,
+`restart_server`, `get_logs`, `add_server`, `update_server`, `remove_server` and
+`import_launch_json`. Start and restart wait until the server is running or has failed,
+and a failure comes back with the server's last lines of output. A server an agent adds or
+changes waits for you to allow it first (see [Approval](#approval)).
+
+`LocalWeb --mcp` speaks MCP over stdin and stdout and drives the running app through
+the API below. It opens LocalWeb if it isn't running, and it reads the token from the
+token file itself, so the token never goes into an MCP config.
+
 ## API
 
 LocalWeb listens on `http://127.0.0.1:47317` (only on this Mac). Change the port with
@@ -100,8 +121,29 @@ token is:
   refused, and CORS preflights are refused, so web pages can't use the API.
 - Request bodies must be JSON with `Content-Type: application/json`, at most 1 MB.
 
-Anyone holding the token can run commands as you, which is what the API is for. Keep it
-out of repositories and logs.
+Anyone holding the token can change what LocalWeb runs. Keep it out of repositories and
+logs.
+
+### Approval
+
+A server added through the API or MCP, or by editing `servers.json`, can't start until
+you allow it. The same goes for an existing server whose `command`, `args`, `cwd` or
+`env` changes (name, port, url and `startAtLogin` don't count). LocalWeb sends a
+notification, and the menu shows the server with its full command, folder and environment
+names, and **Allow** and **Remove** buttons. Servers you add or edit in LocalWeb's own
+windows, or import with the menu's import button, count as allowed. So do the servers you
+already had when you updated to a version with approvals.
+
+Until you allow it, `start` and `restart` answer `403` with an explanation. Add
+`?wait=<seconds>` and they wait that long for you to click Allow, then go ahead. A
+server waiting for you has `"needsApproval": true` in API responses. LocalWeb keeps what
+you've allowed in its preferences, not in `servers.json`.
+
+### Notifications
+
+LocalWeb sends a macOS notification when a server crashes (click it to see the log) and
+when a server is waiting for your approval (click it to review and allow it). macOS asks
+for permission the first time. Turn them off in System Settings › Notifications.
 
 ### Setup for the examples
 

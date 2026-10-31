@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Darwin
 
 enum ServerStatus: String, Codable {
@@ -114,6 +115,8 @@ final class ServerManager: ObservableObject {
     @Published private(set) var servers: [ServerConfig] = []
     @Published private(set) var states: [String: ServerState] = [:]
     @Published private(set) var configError: String?
+    /// Fingerprints of what the user has allowed to run. See `needsApproval`.
+    @Published private(set) var approved: Set<String> = []
 
     private let store = ConfigStore()
     private var logs: [String: LogBuffer] = [:]
@@ -122,6 +125,8 @@ final class ServerManager: ObservableObject {
     private var environment: [String: String]?
     private var waitingForEnvironment: [() -> Void] = []
     private var ticker: Timer?
+    private var askedForApproval: [String: Date] = [:]
+    private static let approvalsKey = "approvedCommands"
 
     private final class RunningProcess {
         let pid: pid_t
@@ -141,6 +146,14 @@ final class ServerManager: ObservableObject {
         store.onChange = { [weak self] file in self?.configChangedOnDisk(file) }
         store.watch()
         for server in servers { states[server.id] = ServerState() }
+        if let saved = UserDefaults.standard.stringArray(forKey: ServerManager.approvalsKey) {
+            approved = Set(saved)
+        } else {
+            // First run with approvals: everything already set up counts as allowed.
+            approved = Set(servers.map(ServerManager.fingerprint))
+            saveApprovals()
+        }
+        DispatchQueue.main.async { [weak self] in self?.askForPendingApprovals() }
         ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
         loadEnvironment()
         whenEnvironmentReady { [weak self] in
@@ -166,27 +179,31 @@ final class ServerManager: ObservableObject {
     // MARK: Editing
 
     @discardableResult
-    func add(_ server: ServerConfig) throws -> ServerConfig {
+    func add(_ server: ServerConfig, approved byUser: Bool = false) throws -> ServerConfig {
         var server = server
         if server.id.isEmpty { server.id = ServerConfig.slug(server.name) }
         if let problem = server.problem { throw ManagerError(message: problem) }
         if self.server(server.id) != nil { throw ManagerError(message: "a server with id \"\(server.id)\" already exists", status: 409) }
         servers.append(server)
         states[server.id] = ServerState()
+        if byUser { approve(server.id) }
         save()
         refreshPort(server.id)
+        askForPendingApprovals()
         return server
     }
 
     /// Replaces a server's settings. A running server keeps its old settings until it restarts.
     @discardableResult
-    func update(_ id: String, to new: ServerConfig) throws -> ServerConfig {
+    func update(_ id: String, to new: ServerConfig, approved byUser: Bool = false) throws -> ServerConfig {
         guard let index = servers.firstIndex(where: { $0.id == id }) else { throw ManagerError(message: "no server \"\(id)\"", status: 404) }
         var new = new
         new.id = id
         if let problem = new.problem { throw ManagerError(message: problem) }
         servers[index] = new
+        if byUser { approve(id) }
         save()
+        askForPendingApprovals()
         return new
     }
 
@@ -205,7 +222,7 @@ final class ServerManager: ObservableObject {
 
     /// Adds every configuration in a `.claude/launch.json` that isn't already here
     /// (same folder, command and arguments). Returns the servers it added.
-    func importLaunchJSON(at path: String) throws -> [ServerConfig] {
+    func importLaunchJSON(at path: String, approved byUser: Bool = false) throws -> [ServerConfig] {
         let found: [ServerConfig]
         do { found = try LaunchJSONImporter.servers(from: path) } catch {
             throw ManagerError(message: "couldn't read launch.json: \(ConfigStore.describe(error))")
@@ -220,7 +237,7 @@ final class ServerManager: ObservableObject {
             let base = candidate.id
             var n = 2
             while server(candidate.id) != nil { candidate.id = "\(base)-\(n)"; n += 1 }
-            added.append(try add(candidate))
+            added.append(try add(candidate, approved: byUser))
         }
         return added
     }
@@ -247,12 +264,64 @@ final class ServerManager: ObservableObject {
             states[server.id] = ServerState()
             refreshPort(server.id)
         }
+        askForPendingApprovals()
+    }
+
+    // MARK: Approval
+
+    /// True when a server's folder, command, arguments or environment is something the
+    /// user hasn't allowed yet: it was added or changed through the API (so by an agent)
+    /// or by editing servers.json. It can't start until the user clicks Allow. Changes
+    /// made in LocalWeb's own windows count as allowed.
+    func needsApproval(_ id: String) -> Bool {
+        guard let server = server(id) else { return false }
+        return !approved.contains(ServerManager.fingerprint(server))
+    }
+
+    var pendingApprovals: [ServerConfig] { servers.filter { needsApproval($0.id) } }
+
+    func approve(_ id: String) {
+        guard let server = server(id) else { return }
+        // Forget approvals for settings no server has any more.
+        let current = Set(servers.map(ServerManager.fingerprint))
+        approved = approved.intersection(current).union([ServerManager.fingerprint(server)])
+        saveApprovals()
+    }
+
+    /// Notifies the user about a server waiting for approval, at most every 15 seconds each.
+    func askForApproval(_ id: String) {
+        guard let server = server(id), needsApproval(id) else { return }
+        let key = ServerManager.fingerprint(server)
+        if let last = askedForApproval[key], Date().timeIntervalSince(last) < 15 { return }
+        askedForApproval[key] = Date()
+        Notifier.shared.approvalNeeded(server)
+    }
+
+    private func askForPendingApprovals() {
+        for server in pendingApprovals where askedForApproval[ServerManager.fingerprint(server)] == nil {
+            askForApproval(server.id)
+        }
+    }
+
+    private func saveApprovals() {
+        UserDefaults.standard.set(approved.sorted(), forKey: ServerManager.approvalsKey)
+    }
+
+    static func fingerprint(_ server: ServerConfig) -> String {
+        let parts = [server.workingDirectory.standardized.path, server.command] + server.args
+            + server.env.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+        let data = (try? JSONSerialization.data(withJSONObject: parts)) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: Running
 
     func start(_ id: String) throws {
         guard let server = server(id) else { throw ManagerError(message: "no server \"\(id)\"", status: 404) }
+        if needsApproval(id) {
+            askForApproval(id)
+            throw ManagerError(message: "\(server.name) is waiting for approval: ask the user to click Allow in the LocalWeb menu (they got a notification)", status: 403)
+        }
         if let process = running[id] {
             // Start while it's still stopping means "start it again once it has stopped".
             if process.stopRequested { restartAfterExit.insert(id) }
@@ -332,6 +401,7 @@ final class ServerManager: ObservableObject {
 
     func restart(_ id: String) throws {
         guard server(id) != nil else { throw ManagerError(message: "no server \"\(id)\"", status: 404) }
+        if needsApproval(id) { try start(id) } // explains, without stopping the old one
         if running[id] != nil {
             stop(id)
             restartAfterExit.insert(id)
@@ -342,7 +412,7 @@ final class ServerManager: ObservableObject {
     }
 
     func startAll() {
-        for server in servers where running[server.id] == nil { try? start(server.id) }
+        for server in servers where running[server.id] == nil && !needsApproval(server.id) { try? start(server.id) }
     }
 
     func stopAll() {
@@ -392,6 +462,7 @@ final class ServerManager: ObservableObject {
             var detail = exited ? "Crashed with exit code \(code)." : "Killed by signal \(signal)."
             if let lastLine { detail += " " + String(lastLine.prefix(160)) }
             setState(id, ServerState(status: .crashed, detail: detail, exitCode: exited ? code : 128 + signal))
+            if let server = server(id) { Notifier.shared.crashed(server, detail: detail) }
         }
         if restartAfterExit.remove(id) != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in try? self?.start(id) }
