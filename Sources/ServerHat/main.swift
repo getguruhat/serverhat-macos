@@ -58,29 +58,41 @@ struct ServerHatApp: App {
 
 // MARK: Theme
 
-/// The menu's own light palette: grey page, white cards, vivid accents.
+/// The menu's own palette, light or dark with the system appearance: a grey page,
+/// cards that stand out from it, vivid accents.
 enum Theme {
-    static let page = Color(red: 0.953, green: 0.957, blue: 0.969)
-    static let card = Color.white
-    static let accent = Color(red: 0.263, green: 0.384, blue: 1.0)
-    static let green = Color(red: 0.086, green: 0.678, blue: 0.369)
-    static let red = Color(red: 0.882, green: 0.227, blue: 0.227)
-    static let orange = Color(red: 0.961, green: 0.502, blue: 0.098)
-    static let yellow = Color(red: 0.937, green: 0.659, blue: 0.0)
-    static let text = Color(red: 0.102, green: 0.110, blue: 0.137)
-    static let secondary = Color(red: 0.420, green: 0.443, blue: 0.494)
-    static let grey = Color(red: 0.600, green: 0.616, blue: 0.651)
-    static let stroke = Color.black.opacity(0.08)
-    static let control = Color(red: 0.937, green: 0.941, blue: 0.953)
+    static let page = dynamic(rgb(0.953, 0.957, 0.969), rgb(0.078, 0.078, 0.086))
+    static let card = dynamic(.white, rgb(0.118, 0.122, 0.133))
+    static let accent = dynamic(rgb(0.263, 0.384, 1.0), rgb(0.322, 0.435, 1.0))
+    static let green = dynamic(rgb(0.086, 0.678, 0.369), rgb(0.263, 0.812, 0.494))
+    static let red = dynamic(rgb(0.882, 0.227, 0.227), rgb(0.937, 0.333, 0.333))
+    static let orange = dynamic(rgb(0.961, 0.502, 0.098), rgb(1.0, 0.616, 0.263))
+    static let yellow = dynamic(rgb(0.937, 0.659, 0.0), rgb(1.0, 0.784, 0.231))
+    static let text = dynamic(rgb(0.102, 0.110, 0.137), rgb(0.961, 0.965, 0.973))
+    static let secondary = dynamic(rgb(0.420, 0.443, 0.494), rgb(0.616, 0.635, 0.678))
+    static let grey = dynamic(rgb(0.600, 0.616, 0.651), rgb(0.494, 0.514, 0.557))
+    static let stroke = dynamic(NSColor.black.withAlphaComponent(0.08), NSColor.white.withAlphaComponent(0.09))
+    static let control = dynamic(rgb(0.937, 0.941, 0.953), rgb(0.180, 0.184, 0.200))
+
+    private static func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> NSColor {
+        NSColor(srgbRed: r, green: g, blue: b, alpha: 1)
+    }
+
+    private static func dynamic(_ light: NSColor, _ dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        })
+    }
 }
 
 struct PillButtonStyle: ButtonStyle {
     var color: Color
+    var foreground: Color = .white
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, minHeight: 38)
             .background(Capsule().fill(color.opacity(configuration.isPressed ? 0.8 : 1)))
             .contentShape(Capsule())
@@ -214,13 +226,11 @@ struct MenuContent: View {
         .padding(14)
         .frame(width: 380)
         .foregroundStyle(Theme.text)
-        // Always light and opaque, whatever the system appearance, in the window's own
-        // rounded shape (an opaque background otherwise fills its corners square).
+        // Opaque, in the window's own rounded shape (an opaque background otherwise fills
+        // its corners square). Light or dark follows the system, like the Theme colors.
         .background(Theme.page)
         .clipShape(RoundedRectangle(cornerRadius: window.radius, style: .continuous))
         .background(MenuWindowReader(shape: window))
-        .environment(\.colorScheme, .light)
-        .preferredColorScheme(.light)
     }
 
     private var header: some View {
@@ -280,7 +290,7 @@ struct MenuContent: View {
                 Button("Add a server") { EditWindowController.show(manager: manager, editing: nil) }
                     .buttonStyle(PillButtonStyle(color: Theme.accent))
                 Button("Import launch.json") { importLaunchJSON() }
-                    .buttonStyle(PillButtonStyle(color: Theme.text))
+                    .buttonStyle(PillButtonStyle(color: Theme.control, foreground: Theme.text))
             }
         }
         .card(padding: 16)
