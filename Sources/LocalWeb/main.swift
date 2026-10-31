@@ -148,6 +148,7 @@ struct MenuContent: View {
     @ObservedObject var updates: UpdateChecker
     let api: APIServer
     @StateObject private var note = Note()
+    @StateObject private var window = MenuWindowShape()
 
     private var activeCount: Int { manager.states.values.filter { $0.status == .running || $0.status == .starting }.count }
 
@@ -212,8 +213,11 @@ struct MenuContent: View {
         .padding(14)
         .frame(width: 380)
         .foregroundStyle(Theme.text)
-        // Always light and opaque, whatever the system appearance.
+        // Always light and opaque, whatever the system appearance, in the window's own
+        // rounded shape (an opaque background otherwise fills its corners square).
         .background(Theme.page)
+        .clipShape(RoundedRectangle(cornerRadius: window.radius, style: .continuous))
+        .background(MenuWindowReader(shape: window))
         .environment(\.colorScheme, .light)
         .preferredColorScheme(.light)
     }
@@ -509,6 +513,63 @@ struct ServerRow: View {
         alert.addButton(withTitle: "Stop It")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn { kill(pid, SIGTERM) }
+    }
+}
+
+// MARK: Menu window
+
+final class MenuWindowShape: ObservableObject {
+    @Published var radius: CGFloat = 12
+}
+
+/// Finds the corner radius macOS gives the menu's window, hides the system's translucent
+/// backdrop behind our opaque content (where that's possible), and makes the shadow
+/// follow the rounded shape.
+struct MenuWindowReader: NSViewRepresentable {
+    let shape: MenuWindowShape
+
+    func makeNSView(context: Context) -> NSView { Probe(shape: shape) }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class Probe: NSView {
+        let shape: MenuWindowShape
+        init(shape: MenuWindowShape) { self.shape = shape; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let frame = window.contentView?.superview ?? window.contentView else { return }
+                if let radius = Probe.cornerRadius(in: frame, skipping: window.contentView), radius > 0, radius != self.shape.radius {
+                    self.shape.radius = radius
+                }
+                window.backgroundColor = .clear
+                window.isOpaque = false
+                Probe.hideBackdrops(in: frame, keeping: self)
+                window.invalidateShadow()
+            }
+        }
+
+        /// The window's own rounding, from the system views around our content.
+        static func cornerRadius(in view: NSView, skipping content: NSView?) -> CGFloat? {
+            if #available(macOS 26.0, *), let glass = view as? NSGlassEffectView, glass.cornerRadius > 0 { return glass.cornerRadius }
+            if let effect = view as? NSVisualEffectView, let mask = effect.maskImage, mask.capInsets.top > 0 { return mask.capInsets.top }
+            if let radius = view.layer?.cornerRadius, radius > 0 { return radius }
+            for subview in view.subviews where subview !== content {
+                if let radius = cornerRadius(in: subview, skipping: content) { return radius }
+            }
+            return nil
+        }
+
+        /// Hides translucent backdrops that aren't drawn around our content, so only our
+        /// clipped background shows and the corners can't disagree.
+        static func hideBackdrops(in view: NSView, keeping content: NSView) {
+            var isBackdrop = view is NSVisualEffectView
+            if #available(macOS 26.0, *) { isBackdrop = isBackdrop || view is NSGlassEffectView }
+            if isBackdrop && !content.isDescendant(of: view) { view.isHidden = true; return }
+            for subview in view.subviews { hideBackdrops(in: subview, keeping: content) }
+        }
     }
 }
 
