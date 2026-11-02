@@ -9,6 +9,8 @@ work (a Node script, `npm run dev`, `python3 -m http.server`, anything with a co
 line), so you never have to keep a Terminal tab open for them. It also has a local API,
 so Claude Code, Codex or your own scripts can add and control servers for you.
 
+<img src="docs/menu.png" width="360" alt="ServerHat's menu: two servers running with their addresses, one stopped, one crashed with its error, and one waiting for approval with its command, folder and environment names, and Allow and Remove"> <img src="docs/menu-dark.png" width="360" alt="The same menu in dark mode">
+
 ## What it does
 
 - A globe in the menu bar, with a list of your servers. Each shows whether it's
@@ -115,6 +117,8 @@ Duplicate commands from the same folder are skipped. The API exposes this as
 ServerHat has a built-in MCP server, so AI coding agents get it as tools instead of
 having to call the API with curl. Open Settings (the gear in the menu), choose **Copy for Claude
 Code** (or **Copy for Codex**) and paste the command into Terminal. It looks like:
+
+<img src="docs/settings.png" width="390" alt="The Settings window: Open ServerHat at login, Copy for Claude Code and Copy for Codex, and Export and Edit servers.json">
 
 ```sh
 claude mcp add --scope user serverhat -- /Applications/ServerHat.app/Contents/MacOS/ServerHat --mcp
@@ -286,7 +290,11 @@ own servers or settings.
 Before publishing a release, run `./release-check.sh`. It runs the tests, installs the app
 from the DMG into a temporary folder, checks its version, signature and icon, and opens the
 Settings window there with an empty server list. It fails if a tab doesn't fit, and leaves
-screenshots of each tab in `release-check/` for you to look at.
+screenshots of each tab and of the menu in `release-check/` for you to look at.
+
+The pictures in `docs/` come from the same `--snapshot`, run with a `servers.json` of
+example servers in `SERVERHAT_SUPPORT_FOLDER`. Servers set to start at login start first,
+and are stopped again before it exits.
 
 The code is in `Sources/ServerHat/`:
 
@@ -297,7 +305,7 @@ The code is in `Sources/ServerHat/`:
 - `Notifier.swift`: crash and approval notifications.
 - `UpdateChecker.swift`: the daily check for a newer GitHub release.
 - `main.swift`: the menu, and the log, edit and Settings windows.
-- `Snapshot.swift`: the Settings screenshots for `release-check.sh` (`ServerHat --snapshot`).
+- `Snapshot.swift`: the Settings and menu screenshots for `release-check.sh` and `docs/` (`ServerHat --snapshot`).
 
 ## Problems and ideas
 
