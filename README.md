@@ -12,7 +12,7 @@ so Claude Code, Codex or your own scripts can add and control servers for you.
 ## What it does
 
 - A globe in the menu bar, with a list of your servers. Each shows whether it's
-  **running**, **stopped**, **crashed** or has its **port in use**, and has Start/Stop,
+  **starting**, **ready**, **unhealthy**, **stopped**, **crashed** or has its **port in use**, and has Start/Stop,
   Restart, Open in browser and View logs. Starting a server from the menu (or allowing
   one) opens it in your browser once it's up. A running server shows its address as a
   link. **Start all** and **Stop all** are in the Servers row when you have more than one.
@@ -20,7 +20,10 @@ so Claude Code, Codex or your own scripts can add and control servers for you.
   already taken by something else (and which process that is).
 - Keeps a log per server, in the app and in `~/Library/Logs/ServerHat/<id>.log`.
 - Stores everything in one readable JSON file and picks up edits to it immediately.
+- Exports the server list as JSON, with the option to omit environment values.
 - Imports servers from Claude Code's `.claude/launch.json`.
+- Imports a project command from `package.json` (`dev`, or `start`), a `web:` Procfile entry, or Docker Compose.
+- Optionally retries a server after a crash, with exponential backoff and a retry limit.
 - Runs commands with the same `PATH` your login shell sets up (Homebrew, nvm, and so on),
   in their own process group, so Stop also ends whatever the server started.
 - Quitting ServerHat stops the servers it started.
@@ -63,36 +66,68 @@ approve **Open Anyway** in System Settings › Privacy & Security the first time
 | `cwd` | no | Folder the command runs in. `~` works. Defaults to your home folder. |
 | `command` | yes | A program on your shell's `PATH` (`node`, `npm`, `python3`) or a path to one. It is run directly, not through a shell, so no pipes or `&&`. |
 | `args` | no | Arguments, one string each. |
-| `port` | no | The port the server listens on. ServerHat uses it to tell "starting" from "running" and to detect a port that's already in use. |
+| `port` | no | The port the server listens on. ServerHat uses it to detect port conflicts and, without an HTTP URL, to tell "starting" from "running". |
 | `url` | no | What Open in browser opens. Defaults to `http://127.0.0.1:<port>`. |
+| `healthContains` | no | Optional text that must appear in the configured URL's HTTP response body before ServerHat reports the app ready. |
 | `env` | no | Extra environment variables, `{"NAME": "value"}`. |
-| `startAtLogin` | no | Start this server whenever ServerHat starts. Turn on **Open ServerHat at login** (in the server's Edit window) to have that happen at login. |
+| `startAtLogin` | no | Start this server whenever ServerHat starts. Turn on **Open ServerHat at login** (in Settings, the gear in the menu) to have that happen at login. |
+| `restartOnCrash` | no | Retry after an unexpected non-zero exit. Off by default. |
+| `restartLimit` | no | Maximum automatic retries before giving up (1–10, default 3). Delay doubles between attempts, up to 30 seconds. |
 
 Save the file and ServerHat reloads it within a second. If the JSON is broken, the menu
 says where, and the last good settings stay in use. A server that's running keeps its old
 settings until you restart it. Removing a server from the file stops it.
 
+Use **Settings › Export › Export servers…** to save a portable JSON copy. Environment values are omitted
+by default; choose the separate **Export with environment values…** action only
+when you intend to include them, and protect that file accordingly.
+
 ## Import from `.claude/launch.json`
 
-Choose the import button (the tray with an arrow) and pick a project folder or its
+Choose **+ › Import .claude/launch.json…** and pick a project folder or its
 `.claude/launch.json`. Each configuration
 (`{name, runtimeExecutable, runtimeArgs, port, url}`) becomes a server that runs from the
 project folder. Configurations that are already in ServerHat are skipped.
 
+## Import a project
+
+Choose **+ › Import project…** and select a project folder. ServerHat prefers the `dev`
+script (or `start` if there is no `dev` script) in `package.json`, a `web:` command in
+`Procfile`, or a Docker Compose file. It infers a port when the command declares one.
+Duplicate commands from the same folder are skipped. The API exposes this as
+`POST /v1/import-project`, and MCP clients can use `import_project`.
+
 ## Use it from Claude Code and Codex (MCP)
 
 ServerHat has a built-in MCP server, so AI coding agents get it as tools instead of
-having to call the API with curl. In the menu, choose **⋯ › Copy MCP setup for Claude
-Code** (or **for Codex**) and paste the command into Terminal. It looks like:
+having to call the API with curl. Open Settings (the gear in the menu), choose **Copy for Claude
+Code** (or **Copy for Codex**) and paste the command into Terminal. It looks like:
 
 ```sh
 claude mcp add --scope user serverhat -- /Applications/ServerHat.app/Contents/MacOS/ServerHat --mcp
 codex mcp add serverhat -- /Applications/ServerHat.app/Contents/MacOS/ServerHat --mcp
 ```
 
+These commands configure the **Claude Code CLI** and **Codex CLI**. The matching CLI
+must already be installed and available in Terminal's `PATH`; installing the Claude or
+Codex desktop app does not necessarily install its command-line tool. Check with
+`command -v claude` or `command -v codex`.
+
+To install the CLIs with npm (Node.js is required):
+
+```sh
+npm install -g @anthropic-ai/claude-code
+npm install -g @openai/codex@latest
+```
+
+See the [Claude Code setup guide](https://docs.anthropic.com/en/docs/claude-code/getting-started)
+and [Codex CLI documentation](https://developers.openai.com/codex/cli) for other install
+methods and troubleshooting. After installation, open a new Terminal window, verify the
+command is found, then run the matching ServerHat setup command above.
+
 The agent then has `list_servers`, `get_server`, `start_server`, `stop_server`,
-`restart_server`, `get_logs`, `add_server`, `update_server`, `remove_server` and
-`import_launch_json`. Start and restart wait until the server is running or has failed,
+`restart_server`, `get_logs`, `add_server`, `update_server`, `remove_server`,
+`import_launch_json` and `import_project`. Start and restart wait until the server is running or has failed,
 and a failure comes back with the server's last lines of output. A server an agent adds or
 changes waits for you to allow it first (see [Approval](#approval)).
 
@@ -130,10 +165,11 @@ logs.
 
 A server added through the API or MCP, or by editing `servers.json`, can't start until
 you allow it. The same goes for an existing server whose `command`, `args`, `cwd` or
-`env` changes (name, port, url and `startAtLogin` don't count). ServerHat sends a
-notification, and the menu shows the server with its full command, folder and environment
-names, and **Allow** and **Remove** buttons. Servers you add or edit in ServerHat's own
-windows, or import with the menu's import button, count as allowed. So do the servers you
+`env` changes (name, port, url and `startAtLogin` don't count). ServerHat sends one
+notification for each pending command fingerprint; it shows the command and folder, and
+clicking it opens **Allow**, **Remove** and **Later** choices. The menu shows the server
+with its full command, folder and environment names, and **Allow** and **Remove** buttons. Servers you add or edit in ServerHat's own
+windows, or import from the menu's **+** button, count as allowed. So do the servers you
 already had when you updated to a version with approvals.
 
 Until you allow it, `start` and `restart` answer `403` with an explanation. Add
@@ -172,6 +208,7 @@ auth=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
 | `GET /v1/servers/{id}/logs?lines=200` | The last lines of its output (up to 5000), plus the log file path. |
 | `POST /v1/start-all`, `POST /v1/stop-all` | Start or stop every server. |
 | `POST /v1/import` | Body `{"path": "<project folder or launch.json>"}`. Returns `{"added": [...]}`. |
+| `POST /v1/import-project` | Body `{"path": "<project folder>"}`. Imports a detected local web command. |
 | `POST /v1/reload` | Re-read `servers.json` now. |
 
 Add `?wait=<seconds>` (up to 60) to start, stop and restart to get the answer once the
@@ -185,8 +222,10 @@ Each server in a response has its settings plus:
 "openURL": "http://127.0.0.1:4319"
 ```
 
-`state` is one of `stopped`, `starting` (launched, port not open yet), `running`,
-`stopping`, `crashed` (exited with an error; see `detail` and `exitCode`), `port-in-use`
+`state` is one of `stopped`, `starting` (waiting for TCP or HTTP readiness), `running`
+(the configured HTTP URL returned 2xx, or the TCP port is open), `unhealthy` (the process
+is alive but HTTP readiness timed out/failed or an uncaught Python/Streamlit exception appeared
+in its output), `stopping`, `crashed` (exited with an error; see `detail` and `exitCode`), `port-in-use`
 (something else holds the port; `detail` and `pid` name it) or `failed` (couldn't be
 launched, for example command not found). Errors come back as `{"error": "…"}` with a
 4xx status.
@@ -232,7 +271,10 @@ The code is in `Sources/ServerHat/`:
 - `Config.swift`: the servers.json format, the file watcher, and the launch.json importer.
 - `ServerManager.swift`: starting and stopping processes, logs, crash and port detection.
 - `APIServer.swift`: the local HTTP API.
-- `main.swift`: the menu, the log, edit and About windows.
+- `MCPServer.swift`: the MCP server that `ServerHat --mcp` runs.
+- `Notifier.swift`: crash and approval notifications.
+- `UpdateChecker.swift`: the daily check for a newer GitHub release.
+- `main.swift`: the menu, and the log, edit and Settings windows.
 
 ## Support
 

@@ -26,8 +26,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func approvalNeeded(_ server: ServerConfig) {
         let command = ([server.command] + server.args).map(ServerManager.shellQuoted).joined(separator: " ")
-        post(.approval, server: server, title: "Allow \(server.name) to run?",
-             body: "\(command)\nin \(server.cwd). Click to review, or use the ServerHat menu.")
+        post(.approval, server: server, title: "Review command for \(server.name)",
+             body: "\(command)\nin \(server.cwd). Click to review and allow.")
     }
 
     private func post(_ kind: Kind, server: ServerConfig, title: String, body: String) {

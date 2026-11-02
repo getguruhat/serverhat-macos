@@ -1,9 +1,10 @@
 import AppKit
 import CryptoKit
 import Darwin
+import Foundation
 
 enum ServerStatus: String, Codable {
-    case stopped, starting, running, stopping, crashed
+    case stopped, starting, running, stopping, crashed, unhealthy
     case portInUse = "port-in-use"
     /// The command couldn't be started at all (not found, bad folder).
     case failed
@@ -42,6 +43,7 @@ final class LogBuffer: ObservableObject {
     private var partial = Data()
     private var file: FileHandle?
     private var publishScheduled = false
+    var onLine: ((String) -> Void)?
     let fileURL: URL
 
     init(id: String) {
@@ -82,6 +84,7 @@ final class LogBuffer: ObservableObject {
     func append(line: String) {
         let clean = line.hasSuffix("\r") ? String(line.dropLast()) : line
         lines.append(clean)
+        onLine?(clean)
         if lines.count > LogBuffer.maxLines { lines.removeFirst(lines.count - LogBuffer.maxLines) }
         file?.write(Data((clean + "\n").utf8))
         schedulePublish()
@@ -124,10 +127,12 @@ final class ServerManager: ObservableObject {
     private var logs: [String: LogBuffer] = [:]
     private var running: [String: RunningProcess] = [:]
     private var restartAfterExit = Set<String>()
+    private var crashRestarts: [String: Int] = [:]
+    private var automaticRestartAfterExit = Set<String>()
     private var environment: [String: String]?
     private var waitingForEnvironment: [() -> Void] = []
     private var ticker: Timer?
-    private var askedForApproval: [String: Date] = [:]
+    private var askedForApproval = Set<String>()
     /// Servers the user started from the menu, to open in the browser once they're up.
     private var openWhenUp = Set<String>()
     private static let approvalsKey = "approvedCommands"
@@ -139,6 +144,8 @@ final class ServerManager: ObservableObject {
         var killTimer: DispatchWorkItem?
         var stopRequested = false
         var waitingForPort = true
+        var healthCheckInFlight = false
+        var applicationError: String?
         let started = Date()
         init(pid: pid_t, output: FileHandle) { self.pid = pid; self.output = output }
     }
@@ -246,6 +253,20 @@ final class ServerManager: ObservableObject {
         return added
     }
 
+    func importProject(at path: String, approved byUser: Bool = false) throws -> [ServerConfig] {
+        let found: [ServerConfig]
+        do { found = try ProjectImporter.suggestions(from: path) } catch { throw ManagerError(message: error.localizedDescription) }
+        var added: [ServerConfig] = []
+        for var candidate in found {
+            guard !servers.contains(where: { $0.workingDirectory.standardized == candidate.workingDirectory.standardized && $0.command == candidate.command && $0.args == candidate.args }) else { continue }
+            let base = candidate.id
+            var n = 2
+            while server(candidate.id) != nil { candidate.id = "\(base)-\(n)"; n += 1 }
+            added.append(try add(candidate, approved: byUser))
+        }
+        return added
+    }
+
     func reloadConfig() {
         configChangedOnDisk(store.load())
     }
@@ -288,21 +309,24 @@ final class ServerManager: ObservableObject {
         guard let server = server(id) else { return }
         // Forget approvals for settings no server has any more.
         let current = Set(servers.map(ServerManager.fingerprint))
-        approved = approved.intersection(current).union([ServerManager.fingerprint(server)])
+        let fingerprint = ServerManager.fingerprint(server)
+        approved = approved.intersection(current).union([fingerprint])
+        askedForApproval.remove(fingerprint)
         saveApprovals()
     }
 
-    /// Notifies the user about a server waiting for approval, at most every 15 seconds each.
+    /// Sends one actionable review notification for each pending command fingerprint.
     func askForApproval(_ id: String) {
         guard let server = server(id), needsApproval(id) else { return }
         let key = ServerManager.fingerprint(server)
-        if let last = askedForApproval[key], Date().timeIntervalSince(last) < 15 { return }
-        askedForApproval[key] = Date()
+        guard askedForApproval.insert(key).inserted else { return }
         Notifier.shared.approvalNeeded(server)
     }
 
     private func askForPendingApprovals() {
-        for server in pendingApprovals where askedForApproval[ServerManager.fingerprint(server)] == nil {
+        let pending = Set(pendingApprovals.map(ServerManager.fingerprint))
+        askedForApproval.formIntersection(pending)
+        for server in pendingApprovals where !askedForApproval.contains(ServerManager.fingerprint(server)) {
             askForApproval(server.id)
         }
     }
@@ -320,11 +344,13 @@ final class ServerManager: ObservableObject {
 
     // MARK: Running
 
-    func start(_ id: String) throws {
+    func start(_ id: String, automaticRestart: Bool = false) throws {
+        if !automaticRestart { automaticRestartAfterExit.remove(id); crashRestarts[id] = 0 }
         guard let server = server(id) else { throw ManagerError(message: "no server \"\(id)\"", status: 404) }
         if needsApproval(id) {
             askForApproval(id)
-            throw ManagerError(message: "\(server.name) is waiting for approval: ask the user to click Allow in the ServerHat menu (they got a notification)", status: 403)
+            let command = ([server.command] + server.args).map(ServerManager.shellQuoted).joined(separator: " ")
+            throw ManagerError(message: "Approval needed for \(server.name): \(command) in \(server.cwd). Click its ServerHat notification to review the command and Allow it, or open the ServerHat menu.", status: 403)
         }
         if let process = running[id] {
             // Start while it's still stopping means "start it again once it has stopped".
@@ -334,7 +360,7 @@ final class ServerManager: ObservableObject {
         guard environment != nil else {
             states[id]?.status = .starting
             states[id]?.detail = "Reading your shell's PATH…"
-            whenEnvironmentReady { [weak self] in try? self?.start(id) }
+            whenEnvironmentReady { [weak self] in try? self?.start(id, automaticRestart: automaticRestart) }
             return
         }
         if let problem = server.problem {
@@ -361,7 +387,12 @@ final class ServerManager: ObservableObject {
         }
 
         let process = RunningProcess(pid: spawned.0, output: spawned.1)
+        if automaticRestart { automaticRestartAfterExit.remove(id); crashRestarts[id, default: 0] += 1 }
         running[id] = process
+        log.onLine = { [weak self, weak process] line in
+            guard let self, let process, self.running[id] === process else { return }
+            self.inspectApplicationOutput(line, id: id, process: process)
+        }
         spawned.1.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty else { handle.readabilityHandler = nil; return }
@@ -372,14 +403,18 @@ final class ServerManager: ObservableObject {
         source.resume()
         process.exitSource = source
 
-        process.waitingForPort = server.port != nil
-        setState(id, ServerState(status: server.port == nil ? .running : .starting,
-                                 detail: server.port.map { "Waiting for port \($0)…" }, pid: spawned.0, startedAt: process.started))
+        let hasHTTPReadiness = server.openURL.map(Self.isHTTPReadinessURL) ?? false
+        process.waitingForPort = server.port != nil || hasHTTPReadiness
+        setState(id, ServerState(status: process.waitingForPort ? .starting : .running,
+                                 detail: server.port.map { "Waiting for port \($0)…" } ?? (hasHTTPReadiness ? "Waiting for HTTP response…" : nil),
+                                 pid: spawned.0, startedAt: process.started))
         reap(id) // in case it exited before the exit source was watching
     }
 
     func stop(_ id: String) {
         restartAfterExit.remove(id)
+        automaticRestartAfterExit.remove(id)
+        crashRestarts[id] = 0
         guard let process = running[id] else {
             if let status = states[id]?.status, status == .crashed || status == .failed {
                 states[id] = ServerState()
@@ -499,7 +534,21 @@ final class ServerManager: ObservableObject {
         }
         if restartAfterExit.remove(id) != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in try? self?.start(id) }
+        } else if let config = server(id), config.restartOnCrash, exited, code != 0,
+                  crashRestarts[id, default: 0] < config.restartLimit {
+            automaticRestartAfterExit.insert(id)
+            let attempt = crashRestarts[id, default: 0] + 1
+            log.append(line: "=== Restarting after crash (attempt \(attempt) of \(config.restartLimit))")
+            let delay = min(30.0, pow(2.0, Double(attempt - 1)))
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.automaticRestartAfterExit.contains(id), self.server(id) != nil else { return }
+                try? self.start(id, automaticRestart: true)
+            }
         } else {
+            if let config = server(id), config.restartOnCrash, crashRestarts[id, default: 0] >= config.restartLimit {
+                states[id]?.detail = (states[id]?.detail ?? "Crashed.") + " Automatic restart limit reached."
+                crashRestarts[id] = 0
+            }
             refreshPort(id)
         }
     }
@@ -508,20 +557,96 @@ final class ServerManager: ObservableObject {
         for (id, process) in running {
             reap(id)
             guard running[id] === process, process.waitingForPort, !process.stopRequested,
-                  let port = server(id)?.port else { continue }
+                  let config = server(id) else { continue }
+            if let port = config.port, !PortProbe.isListening(port) {
+                if Date().timeIntervalSince(process.started) > 90 {
+                    process.waitingForPort = false
+                    setState(id, ServerState(status: .unhealthy,
+                                             detail: "The process is alive, but nothing is listening on port \(port).",
+                                             pid: process.pid, startedAt: process.started))
+                }
+                continue
+            }
+            if let url = config.openURL, Self.isHTTPReadinessURL(url) {
+                checkHTTPReadiness(id, process: process, url: url)
+                continue
+            }
+            guard let port = config.port else { continue }
             if PortProbe.isListening(port) {
                 process.waitingForPort = false
-                states[id]?.status = .running
-                states[id]?.detail = nil
+                setHealthyState(id, process: process)
             } else if Date().timeIntervalSince(process.started) > 90 {
                 process.waitingForPort = false
-                states[id]?.status = .running
-                states[id]?.detail = "Running, but nothing is listening on port \(port)."
+                states[id]?.status = .unhealthy
+                states[id]?.detail = "The process is alive, but nothing is listening on port \(port)."
             }
         }
         // Every few seconds, notice ports that something outside ServerHat opened or closed.
         if Int(Date().timeIntervalSince1970) % 3 == 0 {
             for server in servers where running[server.id] == nil { refreshPort(server.id) }
+        }
+    }
+
+    private func checkHTTPReadiness(_ id: String, process: RunningProcess, url: URL) {
+        guard !process.healthCheckInFlight else { return }
+        process.healthCheckInFlight = true
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3)
+        request.httpMethod = "GET"
+        URLSession.shared.dataTask(with: request) { [weak self, weak process] data, response, error in
+            DispatchQueue.main.async {
+                guard let self, let process, self.running[id] === process else { return }
+                process.healthCheckInFlight = false
+                guard process.waitingForPort, !process.stopRequested else { return }
+                if let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) {
+                    let body = String(decoding: (data ?? Data()).prefix(1_000_000), as: UTF8.self)
+                    if let expected = self.server(id)?.healthContains, !body.contains(expected) {
+                        let message = "HTTP responds, but the configured readiness text was not found."
+                        if Date().timeIntervalSince(process.started) > 90 {
+                            process.waitingForPort = false
+                            self.setState(id, ServerState(status: .unhealthy, detail: message, pid: process.pid, startedAt: process.started))
+                        } else {
+                            self.states[id]?.detail = message
+                        }
+                        return
+                    }
+                    process.waitingForPort = false
+                    self.setHealthyState(id, process: process)
+                } else if Date().timeIntervalSince(process.started) > 90 {
+                    process.waitingForPort = false
+                    let reason = (response as? HTTPURLResponse).map { "HTTP returned \($0.statusCode)." }
+                        ?? error.map { "HTTP readiness check failed: \($0.localizedDescription)" }
+                        ?? "No HTTP response."
+                    self.setState(id, ServerState(status: .unhealthy, detail: reason, pid: process.pid, startedAt: process.started))
+                }
+            }
+        }.resume()
+    }
+
+    private static func isHTTPReadinessURL(_ url: URL) -> Bool {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return false }
+        let host = (url.host ?? "").lowercased()
+        return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
+    }
+
+    private func inspectApplicationOutput(_ line: String, id: String, process: RunningProcess) {
+        let signatures = ["Uncaught app execution", "Traceback (most recent call last):", "ModuleNotFoundError:", "ImportError:"]
+        guard signatures.contains(where: line.contains) else { return }
+        let summary: String
+        if line.contains("Uncaught app execution") || line.contains("Traceback (most recent call last):") {
+            summary = "The app reported an uncaught exception. See View logs for the traceback."
+        } else {
+            summary = String(line.trimmingCharacters(in: .whitespaces).prefix(220))
+        }
+        process.applicationError = summary
+        process.waitingForPort = false
+        setState(id, ServerState(status: .unhealthy, detail: summary, pid: process.pid, startedAt: process.started))
+    }
+
+    private func setHealthyState(_ id: String, process: RunningProcess) {
+        if let appError = process.applicationError {
+            setState(id, ServerState(status: .unhealthy, detail: appError, pid: process.pid, startedAt: process.started))
+        } else {
+            setState(id, ServerState(status: .running, pid: process.pid, startedAt: process.started))
         }
     }
 

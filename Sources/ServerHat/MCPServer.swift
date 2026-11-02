@@ -38,9 +38,10 @@ enum MCPServer {
                     ServerHat runs the user's local web servers from the Mac menu bar. Use these tools instead \
                     of starting dev servers in your own shell, so they keep running after your session and the \
                     user can control them. List servers before adding one, and don't stop or remove servers the \
-                    user didn't mention. A server you add, or whose command, folder or environment you \
-                    change, can't start until the user clicks Allow in ServerHat (they get a notification); \
-                    start_server and restart_server wait for that. Tell the user you're waiting for them.
+                    user didn't mention. New or changed commands require the user's approval in ServerHat. \
+                    If a start is actually blocked for approval, tell the user once with the exact command \
+                    and folder shown in the error. The notification opens a review with Allow, Remove and \
+                    Later choices. Don't repeat generic approval warnings.
                     """,
             ])
         case "ping":
@@ -75,8 +76,11 @@ enum MCPServer {
         "args": ["type": "array", "items": ["type": "string"], "description": "Arguments, one string each."],
         "port": ["type": "integer", "description": "The port the server really listens on, so ServerHat can tell when it's up."],
         "url": ["type": "string", "description": "What Open in browser opens. Defaults to http://127.0.0.1:<port>."],
+        "healthContains": ["type": "string", "description": "Optional text that must appear in the loopback HTTP response before the app is considered ready."],
         "env": ["type": "object", "additionalProperties": ["type": "string"], "description": "Extra environment variables."],
         "startAtLogin": ["type": "boolean", "description": "Start this server whenever ServerHat starts."],
+        "restartOnCrash": ["type": "boolean", "description": "Retry after an unexpected non-zero exit."],
+        "restartLimit": ["type": "integer", "description": "Maximum automatic retries, 1–10. Default 3."],
     ]
 
     private static func tool(_ name: String, _ title: String, _ description: String, properties: [String: Any] = [:],
@@ -94,25 +98,25 @@ enum MCPServer {
 
     static let tools: [[String: Any]] = [
         tool("list_servers", "List servers",
-             "Every server in ServerHat with its settings and status (stopped, starting, running, stopping, crashed, port-in-use or failed). Check this before adding a server.",
+             "Every server in ServerHat with its settings and status (stopped, starting, running, unhealthy, stopping, crashed, port-in-use or failed). Check this before adding a server.",
              readOnly: true),
         tool("get_server", "Get server", "One server's settings and status.",
              properties: idProperty, required: ["id"], readOnly: true),
         tool("start_server", "Start server",
-             "Start a server and wait until it's running or has failed. If it fails, the answer includes its recent output. A new or changed server first waits for the user to click Allow in ServerHat; tell them to.",
+             "Start a server and wait until it's ready or has failed. If approval is required, the error names the command and folder; report that specific prompt once. If startup fails, the answer includes recent output.",
              properties: idProperty.merging(["wait": ["type": "integer", "description": "Seconds to wait, up to 60. Default 30."]]) { a, _ in a },
              required: ["id"]),
         tool("stop_server", "Stop server", "Stop a server (and whatever it started).",
              properties: idProperty, required: ["id"], destructive: true),
         tool("restart_server", "Restart server",
-             "Stop a server and start it again, for example after changing its settings. Waits until it's running or has failed.",
+             "Stop a server and start it again, for example after changing its settings. Waits until it's ready or has failed. If approval is required, report the specific command and folder once.",
              properties: idProperty.merging(["wait": ["type": "integer", "description": "Seconds to wait, up to 60. Default 30."]]) { a, _ in a },
              required: ["id"]),
-        tool("get_logs", "Get logs", "The last lines a server printed. Use it to find out why a server crashed.",
+        tool("get_logs", "Get logs", "The last lines a server printed. Use them to diagnose a crash or an unhealthy app.",
              properties: idProperty.merging(["lines": ["type": "integer", "description": "How many lines, up to 1000. Default 100."]]) { a, _ in a },
              required: ["id"], readOnly: true),
         tool("add_server", "Add server",
-             "Add a server to ServerHat. The user has to allow it before it can run (they get a notification). Set start to true to wait for that and start it.",
+             "Add a server to ServerHat. If start is true and approval is needed, the user gets one notification showing the command and folder; clicking it opens Allow/Remove/Later choices.",
              properties: serverFields.merging([
                 "id": ["type": "string", "description": "Short unique id. Made from name if left out."],
                 "start": ["type": "boolean", "description": "Start it after adding and wait until it's running."],
@@ -128,6 +132,9 @@ enum MCPServer {
              "Add the servers in a project's .claude/launch.json. Ones already in ServerHat are skipped.",
              properties: ["path": ["type": "string", "description": "Absolute path to the project folder or its .claude/launch.json."]],
              required: ["path"]),
+        tool("import_project", "Import project",
+             "Suggest local web server commands from package.json dev/start scripts, a web Procfile entry, or Docker Compose. Import only when the user asks.",
+             properties: ["path": ["type": "string", "description": "Absolute path to a project folder."]], required: ["path"]),
     ]
 
     private static func call(_ name: String, _ args: [String: Any]) -> [String: Any] {
@@ -165,6 +172,8 @@ enum MCPServer {
                 return result(try API.shared.request("DELETE", path))
             case "import_launch_json":
                 return result(try API.shared.request("POST", "/v1/import", body: ["path": args["path"] as? String ?? ""]))
+            case "import_project":
+                return result(try API.shared.request("POST", "/v1/import-project", body: ["path": args["path"] as? String ?? ""]))
             default:
                 return failure("unknown tool \(name)")
             }
@@ -177,7 +186,7 @@ enum MCPServer {
     private static func withLogsIfFailed(_ answer: API.Answer, id: String) -> API.Answer {
         guard answer.ok, var object = answer.json as? [String: Any],
               let state = (object["status"] as? [String: Any])?["state"] as? String,
-              ["crashed", "failed", "port-in-use"].contains(state),
+              ["crashed", "failed", "port-in-use", "unhealthy"].contains(state),
               let logs = try? API.shared.request("GET", "/v1/servers/\(id)/logs", query: ["lines": "40"]),
               let lines = (logs.json as? [String: Any])?["lines"] else { return answer }
         object["recentLogs"] = lines

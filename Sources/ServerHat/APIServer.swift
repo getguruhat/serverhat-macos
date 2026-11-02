@@ -222,6 +222,11 @@ final class APIServer {
                 guard let path = body["path"] as? String else { throw ManagerError(message: "send {\"path\": \"/folder/with/.claude/launch.json\"}") }
                 let added = try manager.importLaunchJSON(at: path)
                 reply(Response(status: 200, body: ["added": added.map(describe)]))
+            case ("POST", 1) where route[0] == "import-project":
+                let body = try jsonObject(request.body)
+                guard let path = body["path"] as? String else { throw ManagerError(message: "send {\"path\": \"/path/to/project\"}") }
+                let added = try manager.importProject(at: path)
+                reply(Response(status: 200, body: ["added": added.map(describe)]))
             case ("POST", 1) where route[0] == "start-all":
                 manager.startAll()
                 reply(Response(status: 200, body: ["servers": manager.servers.map(describe)]))

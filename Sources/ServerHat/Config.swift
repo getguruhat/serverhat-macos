@@ -12,14 +12,21 @@ struct ServerConfig: Codable, Equatable, Identifiable {
     var port: Int?
     /// What "Open in browser" opens. Defaults to http://127.0.0.1:<port>.
     var url: String?
+    /// Optional text that must appear in the HTTP response before the app is ready.
+    var healthContains: String?
     var env: [String: String] = [:]
     /// Start this server whenever ServerHat starts (so at login, when ServerHat opens at login).
     var startAtLogin: Bool = false
+    /// Automatically retry an unexpected non-zero exit, up to restartLimit times per run.
+    var restartOnCrash: Bool = false
+    var restartLimit: Int = 3
 
     init(id: String, name: String, cwd: String, command: String, args: [String] = [], port: Int? = nil,
-         url: String? = nil, env: [String: String] = [:], startAtLogin: Bool = false) {
+         url: String? = nil, healthContains: String? = nil, env: [String: String] = [:], startAtLogin: Bool = false,
+         restartOnCrash: Bool = false, restartLimit: Int = 3) {
         self.id = id; self.name = name; self.cwd = cwd; self.command = command; self.args = args
-        self.port = port; self.url = url; self.env = env; self.startAtLogin = startAtLogin
+        self.port = port; self.url = url; self.healthContains = healthContains; self.env = env; self.startAtLogin = startAtLogin
+        self.restartOnCrash = restartOnCrash; self.restartLimit = min(10, max(1, restartLimit))
     }
 
     // Hand-edited files may leave out anything optional.
@@ -32,8 +39,11 @@ struct ServerConfig: Codable, Equatable, Identifiable {
         args = try c.decodeIfPresent([String].self, forKey: .args) ?? []
         port = try c.decodeIfPresent(Int.self, forKey: .port)
         url = try c.decodeIfPresent(String.self, forKey: .url)
+        healthContains = try c.decodeIfPresent(String.self, forKey: .healthContains)
         env = try c.decodeIfPresent([String: String].self, forKey: .env) ?? [:]
         startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
+        restartOnCrash = try c.decodeIfPresent(Bool.self, forKey: .restartOnCrash) ?? false
+        restartLimit = min(10, max(1, try c.decodeIfPresent(Int.self, forKey: .restartLimit) ?? 3))
     }
 
     var workingDirectory: URL {
@@ -209,6 +219,72 @@ enum LaunchJSONImporter {
 
     private static func abbreviate(_ path: String) -> String {
         (path as NSString).abbreviatingWithTildeInPath
+    }
+}
+
+/// Finds a sensible local web-server command in common project metadata.
+enum ProjectImporter {
+    struct Suggestion: Identifiable {
+        let server: ServerConfig
+        var id: String { server.id }
+    }
+
+    static func suggestions(from path: String) throws -> [ServerConfig] {
+        let root = URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+        var result: [ServerConfig] = []
+        let fm = FileManager.default
+        let package = root.appendingPathComponent("package.json")
+        if let data = try? Data(contentsOf: package),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let scripts = json["scripts"] as? [String: String] {
+            if let script = ["dev", "start"].first(where: { scripts[$0] != nil }) {
+                let port = inferredPort(scripts[script] ?? "")
+                let manager: String
+                if let declared = json["packageManager"] as? String, let separator = declared.firstIndex(of: "@") {
+                    manager = String(declared[..<separator])
+                } else if fm.fileExists(atPath: root.appendingPathComponent("bun.lock").path)
+                            || fm.fileExists(atPath: root.appendingPathComponent("bun.lockb").path) { manager = "bun" }
+                else if fm.fileExists(atPath: root.appendingPathComponent("pnpm-lock.yaml").path) { manager = "pnpm" }
+                else if fm.fileExists(atPath: root.appendingPathComponent("yarn.lock").path) { manager = "yarn" }
+                else { manager = "npm" }
+                let args = ["run", script]
+                result.append(ServerConfig(id: ServerConfig.slug(root.lastPathComponent + "-" + script),
+                                           name: "\(root.lastPathComponent) (\(script))", cwd: root.path,
+                                           command: manager, args: args, port: port))
+            }
+        }
+        let procfile = root.appendingPathComponent("Procfile")
+        if let contents = try? String(contentsOf: procfile, encoding: .utf8) {
+            for line in contents.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("web:"), let colon = trimmed.firstIndex(of: ":") else { continue }
+                let command = String(trimmed[trimmed.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                guard !command.isEmpty else { continue }
+                result.append(ServerConfig(id: ServerConfig.slug(root.lastPathComponent + "-web"),
+                                           name: "\(root.lastPathComponent) (web)", cwd: root.path,
+                                           command: "/bin/zsh", args: ["-lc", command], port: inferredPort(command)))
+                break
+            }
+        }
+        let compose = ["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"]
+            .map { root.appendingPathComponent($0) }.first { fm.fileExists(atPath: $0.path) }
+        if let compose {
+            result.append(ServerConfig(id: ServerConfig.slug(root.lastPathComponent + "-compose"),
+                                       name: "\(root.lastPathComponent) (Docker Compose)", cwd: root.path,
+                                       command: "docker", args: ["compose", "-f", compose.lastPathComponent, "up"]))
+        }
+        guard !result.isEmpty else { throw NSError(domain: "ProjectImporter", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "No supported web server configuration found. Looked for package.json scripts (dev/start), a web Procfile entry, or a Docker Compose file."]) }
+        return result
+    }
+
+    private static func inferredPort(_ text: String) -> Int? {
+        let patterns = [#"(?:--port(?:=|\s+)|PORT=)(\d{2,5})"#, #"localhost:(\d{2,5})"#]
+        for pattern in patterns {
+            if let range = text.range(of: pattern, options: .regularExpression),
+               let number = Int(text[range].filter(\.isNumber)), (1...65535).contains(number) { return number }
+        }
+        return nil
     }
 }
 
