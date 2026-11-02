@@ -949,14 +949,14 @@ final class SettingsWindowController {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 390, height: 300),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        // A hosting controller, not a hosting view: the window takes its preferred size, and
+        // follows it when the tab or a message changes the content's height.
+        let hosting = NSHostingController(rootView: SettingsView(manager: manager, login: LoginItem(), note: Note(), tab: SettingsTab()))
+        hosting.sizingOptions = [.preferredContentSize]
+        let window = NSWindow(contentViewController: hosting)
+        window.styleMask = [.titled, .closable]
         window.title = "ServerHat Settings"
         window.isReleasedWhenClosed = false
-        // The window takes each tab's height, so neither tab ends in empty space.
-        let hosting = NSHostingView(rootView: SettingsView(manager: manager, login: LoginItem(), note: Note(), tab: SettingsTab()))
-        hosting.sizingOptions = [.preferredContentSize]
-        window.contentView = hosting
         window.center()
         self.window = window
         window.makeKeyAndOrderFront(nil)
