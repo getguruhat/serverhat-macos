@@ -30,11 +30,24 @@ so Claude Code, Codex or your own scripts can add and control servers for you.
 
 ## Download
 
-### macOS (13+, Apple silicon)
+### macOS 13 or later, Apple silicon (M1 and newer) only
 
-Download `ServerHat-<version>-Installer.dmg` from the [latest release](../../releases/latest),
-open it, and drag `ServerHat.app` onto Applications. The app isn't notarized yet, so
-approve **Open Anyway** in System Settings › Privacy & Security the first time.
+With [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask getguruhat/tap/serverhat
+```
+
+Or download `ServerHat-<version>-Installer.dmg` from the [latest release](../../releases/latest),
+open it, and drag `ServerHat.app` onto Applications.
+
+The app isn't notarized by Apple, so macOS blocks the first launch. Open **System Settings ›
+Privacy & Security** and click **Open Anyway** (once). ServerHat is open source: you can
+read every line or [build it yourself](#build-from-source).
+
+### Windows
+
+See [ServerHat for Windows](https://github.com/getguruhat/serverhat-windows).
 
 ## The config file
 
@@ -266,6 +279,15 @@ open ServerHat.app
 
 `swift make-icon.swift` redraws `icon.png` and `AppIcon.icns`.
 
+`swift test` runs the tests: the API's token, Host and Origin checks, request parsing,
+approval fingerprints, the servers.json format and the importers. They never touch your
+own servers or settings.
+
+Before publishing a release, run `./release-check.sh`. It runs the tests, installs the app
+from the DMG into a temporary folder, checks its version, signature and icon, and opens the
+Settings window there with an empty server list. It fails if a tab doesn't fit, and leaves
+screenshots of each tab in `release-check/` for you to look at.
+
 The code is in `Sources/ServerHat/`:
 
 - `Config.swift`: the servers.json format, the file watcher, and the launch.json importer.
@@ -275,6 +297,12 @@ The code is in `Sources/ServerHat/`:
 - `Notifier.swift`: crash and approval notifications.
 - `UpdateChecker.swift`: the daily check for a newer GitHub release.
 - `main.swift`: the menu, and the log, edit and Settings windows.
+- `Snapshot.swift`: the Settings screenshots for `release-check.sh` (`ServerHat --snapshot`).
+
+## Problems and ideas
+
+Found a bug or want something? [Open an issue](https://github.com/getguruhat/serverhat-macos/issues).
+ServerHat collects no analytics, so issues are the only way we hear about problems.
 
 ## Support
 

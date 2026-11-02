@@ -81,7 +81,7 @@ final class APIServer {
 
     // MARK: HTTP
 
-    private struct Request {
+    struct Request {
         var method: String
         var path: String
         var query: [String: String]
@@ -89,7 +89,7 @@ final class APIServer {
         var body: Data
     }
 
-    private struct Response {
+    struct Response {
         var status: Int
         var body: Any
 
@@ -121,9 +121,9 @@ final class APIServer {
         }
     }
 
-    private enum Parse { case needMore, request(Request), bad(String) }
+    enum Parse { case needMore, request(Request), bad(String) }
 
-    private static func parse(_ data: Data) -> Parse {
+    static func parse(_ data: Data) -> Parse {
         guard let end = data.range(of: Data("\r\n\r\n".utf8)) else { return .needMore }
         guard let head = String(data: data[data.startIndex..<end.lowerBound], encoding: .utf8) else { return .bad("headers aren't UTF-8") }
         var lines = head.components(separatedBy: "\r\n")
@@ -166,7 +166,8 @@ final class APIServer {
 
     // MARK: Checks
 
-    private func refusal(for request: Request) -> Response? {
+    /// Static so the tests can check it without a token file or a running server.
+    static func refusal(for request: Request, port: UInt16, token: String) -> Response? {
         let allowedHosts = ["127.0.0.1:\(port)", "localhost:\(port)"]
         guard let host = request.headers["host"]?.lowercased(), allowedHosts.contains(host) else {
             return .error(403, "Host must be 127.0.0.1:\(port)")
@@ -201,7 +202,7 @@ final class APIServer {
     // MARK: Routes
 
     private func handle(_ request: Request, reply: @escaping (Response) -> Void) {
-        if let refusal = refusal(for: request) { return reply(refusal) }
+        if let refusal = APIServer.refusal(for: request, port: port, token: token) { return reply(refusal) }
         let segments = request.path.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         guard segments.first == "v1" else { return reply(.error(404, "unknown path; the API lives under /v1")) }
         let route = Array(segments.dropFirst())

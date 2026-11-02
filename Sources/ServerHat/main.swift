@@ -36,6 +36,10 @@ enum Entry {
     static func main() {
         // `ServerHat --mcp` is the MCP server for Claude Code, Codex and other clients, not the app.
         if CommandLine.arguments.dropFirst().contains("--mcp") { MCPServer.run() }
+        // `ServerHat --snapshot <folder>` is release-check.sh's look at the windows, not the app.
+        if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
+            Snapshot.run(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -941,7 +945,8 @@ struct EditView: View {
 
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
+    let tab = SettingsTab()
 
     func show(manager: ServerManager) {
         if let window {
@@ -951,7 +956,7 @@ final class SettingsWindowController {
         }
         // A hosting controller, not a hosting view: the window takes its preferred size, and
         // follows it when the tab or a message changes the content's height.
-        let hosting = NSHostingController(rootView: SettingsView(manager: manager, login: LoginItem(), note: Note(), tab: SettingsTab()))
+        let hosting = NSHostingController(rootView: SettingsView(manager: manager, login: LoginItem(), note: Note(), tab: tab))
         hosting.sizingOptions = [.preferredContentSize]
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .closable]

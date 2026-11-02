@@ -81,6 +81,12 @@ struct ConfigFile: Codable {
 /// `onChange` when someone else (a person, Claude Code, Codex) edits it.
 final class ConfigStore {
     static let folder: URL = {
+        // release-check.sh runs the app against an empty temporary folder.
+        if let override = ProcessInfo.processInfo.environment["SERVERHAT_SUPPORT_FOLDER"], !override.isEmpty {
+            let url = URL(fileURLWithPath: override, isDirectory: true)
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            return url
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let url = base.appendingPathComponent("ServerHat", isDirectory: true)
         Rename.moveOldFolder(base.appendingPathComponent("LocalWeb", isDirectory: true), to: url)
