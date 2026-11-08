@@ -1059,6 +1059,19 @@ struct SettingsView: View {
             }
             .card(padding: 12)
 
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Approve new servers").font(.system(size: 13, weight: .semibold))
+                    Text("Ask me before a server added or changed by Claude or ChatGPT can run.")
+                        .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("Approve new servers", isOn: $manager.requireApproval)
+                    .toggleStyle(.switch).labelsHidden()
+            }
+            .card(padding: 12)
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Use from Claude Code or Codex").font(.system(size: 13, weight: .semibold))
                 Text("Copies the command that adds ServerHat's MCP tools. Paste it in Terminal.")

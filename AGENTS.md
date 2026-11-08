@@ -34,7 +34,7 @@ them and skip the curl steps below; the same rules apply. To add them, run
 
 Rules:
 
-- A server you add, or whose `command`, `args`, `cwd` or `env` you change, can't start
+- If the user turned on "Approve new servers" in ServerHat Settings (off by default), a server you add, or whose `command`, `args`, `cwd` or `env` you change, can't start
   until the user clicks **Allow** in ServerHat. They get a notification. Tell them you're
   waiting, and use `start?wait=60` (or MCP `start_server`), which waits for them. A server
   waiting for approval has `"needsApproval": true`.

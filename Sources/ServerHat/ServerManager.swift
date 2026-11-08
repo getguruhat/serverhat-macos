@@ -136,6 +136,22 @@ final class ServerManager: ObservableObject {
     /// Servers the user started from the menu, to open in the browser once they're up.
     private var openWhenUp = Set<String>()
     private static let approvalsKey = "approvedCommands"
+    private static let requireApprovalKey = "requireApproval"
+
+    /// When on, servers that Claude or ChatGPT (or servers.json edits) add or change can't
+    /// start until the user clicks Allow. Off by default.
+    @Published var requireApproval: Bool = UserDefaults.standard.bool(forKey: "requireApproval") {
+        didSet {
+            UserDefaults.standard.set(requireApproval, forKey: ServerManager.requireApprovalKey)
+            if requireApproval {
+                // Turning it on starts from a clean slate: what's set up now counts as allowed.
+                approved = Set(servers.map(ServerManager.fingerprint))
+                saveApprovals()
+            }
+            askedForApproval.removeAll()
+            askForPendingApprovals()
+        }
+    }
 
     private final class RunningProcess {
         let pid: pid_t
@@ -299,7 +315,7 @@ final class ServerManager: ObservableObject {
     /// or by editing servers.json. It can't start until the user clicks Allow. Changes
     /// made in ServerHat's own windows count as allowed.
     func needsApproval(_ id: String) -> Bool {
-        guard let server = server(id) else { return false }
+        guard requireApproval, let server = server(id) else { return false }
         return !approved.contains(ServerManager.fingerprint(server))
     }
 
