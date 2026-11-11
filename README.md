@@ -61,7 +61,7 @@ See [ServerHat for Windows](https://github.com/getguruhat/serverhat-windows).
     {
       "args" : ["ai-experts/server.mjs"],
       "command" : "node",
-      "cwd" : "~/Desktop/Codex",
+      "cwd" : "~/Developer",
       "env" : {},
       "id" : "ai-experts",
       "name" : "AI Experts",
@@ -309,7 +309,7 @@ The code is in `Sources/ServerHat/`:
 
 ## Problems and ideas
 
-Found a bug or want something? [Open an issue](https://github.com/getguruhat/serverhat-macos/issues).
+Found a bug or want something? [Open an issue](https://github.com/getguruhat/serverhat-macos/issues), or ask in [Discussions](https://github.com/getguruhat/serverhat-macos/discussions).
 ServerHat collects no analytics, so issues are the only way we hear about problems.
 
 ## Support
