@@ -320,3 +320,5 @@ ServerHat is free. If it saves you time, you can
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Guide: [How to let Claude Code and Codex run your local dev servers](https://guruhat.com/guides/run-dev-servers-claude-code-codex-mcp/). More at [guruhat.com/apps/serverhat](https://guruhat.com/apps/serverhat/).
