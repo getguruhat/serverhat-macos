@@ -288,13 +288,13 @@ struct MenuContent: View {
                     // With one server its own play and stop buttons are enough.
                     if manager.servers.count > 1 {
                         HStack(spacing: 6) {
-                            Text("\(manager.servers.count) servers").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.secondary)
+                            Text(T("{0} servers", manager.servers.count)).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.secondary)
                             Spacer()
                             if activeCount < manager.servers.count {
-                                Button("Start all") { manager.startAll() }.buttonStyle(TintButtonStyle(color: Theme.accent))
+                                Button(T("Start all")) { manager.startAll() }.buttonStyle(TintButtonStyle(color: Theme.accent))
                             }
                             if manager.runningCount > 0 {
-                                Button("Stop all") { manager.stopAll() }.buttonStyle(TintButtonStyle(color: Theme.red))
+                                Button(T("Stop all")) { manager.stopAll() }.buttonStyle(TintButtonStyle(color: Theme.red))
                             }
                         }
                         .frame(minHeight: 24)
@@ -318,7 +318,7 @@ struct MenuContent: View {
                 Link(destination: update.page) {
                     HStack {
                         Image(systemName: "arrow.down.circle.fill").font(.system(size: 18)).foregroundStyle(Theme.accent)
-                        Text("ServerHat \(update.version) is available").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
+                        Text(T("ServerHat {0} is available", update.version)).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.text)
                         Spacer()
                         Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.secondary)
                     }
@@ -346,9 +346,9 @@ struct MenuContent: View {
                 Spacer(minLength: 4)
                 if activeCount > 0 {
                     Circle().fill(Theme.green).frame(width: 7, height: 7)
-                    Text("\(activeCount) active").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.green)
+                    Text(T("{0} active", activeCount)).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.green)
                 } else if !manager.servers.isEmpty {
-                    Text("All stopped").font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.secondary)
+                    Text(T("All stopped")).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.secondary)
                 }
             }
             .padding(.horizontal, 12)
@@ -357,10 +357,10 @@ struct MenuContent: View {
             .overlay(Capsule().strokeBorder(Theme.stroke))
 
             Menu {
-                Button("Add server…") { EditWindowController.show(manager: manager, editing: nil) }
+                Button(T("Add server…")) { EditWindowController.show(manager: manager, editing: nil) }
                 Divider()
-                Button("Import project…") { importProject() }
-                Button("Import .claude/launch.json…") { importLaunchJSON() }
+                Button(T("Import project…")) { importProject() }
+                Button(T("Import .claude/launch.json…")) { importLaunchJSON() }
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 13, weight: .semibold))
@@ -371,17 +371,17 @@ struct MenuContent: View {
             .frame(width: 30, height: 30)
             .background(Circle().fill(Theme.card))
             .overlay(Circle().strokeBorder(Theme.stroke))
-            .help("Add or import servers").accessibilityLabel("Add or import servers")
+            .help(T("Add or import servers")).accessibilityLabel(T("Add or import servers"))
 
             Button { SettingsWindowController.shared.show(manager: manager) } label: { Image(systemName: "gearshape") }
                 .buttonStyle(CircleButtonStyle(size: 30, fill: Theme.card))
                 .overlay(Circle().strokeBorder(Theme.stroke))
-                .help("Settings and About").accessibilityLabel("Settings")
+                .help(T("Settings and About")).accessibilityLabel(T("Settings"))
 
             Button { quit() } label: { Image(systemName: "power") }
                 .buttonStyle(CircleButtonStyle(size: 30, fill: Theme.card))
                 .overlay(Circle().strokeBorder(Theme.stroke))
-                .help("Quit ServerHat (stops its servers)").accessibilityLabel("Quit ServerHat")
+                .help(T("Quit ServerHat (stops its servers)")).accessibilityLabel(T("Quit ServerHat"))
         }
     }
 
@@ -394,19 +394,19 @@ struct MenuContent: View {
                     .frame(width: 42, height: 42)
                     .background(Circle().fill(Theme.accent.opacity(0.13)))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("No servers yet").font(.system(size: 15, weight: .semibold))
-                    Text("Add one, import a project, or ask Claude Code or Codex.")
+                    Text(T("No servers yet")).font(.system(size: 15, weight: .semibold))
+                    Text(T("Add one, import a project, or ask Claude Code or Codex."))
                         .font(.system(size: 12)).foregroundStyle(Theme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             VStack(spacing: 8) {
-                Button("Add a server") { EditWindowController.show(manager: manager, editing: nil) }
+                Button(T("Add a server")) { EditWindowController.show(manager: manager, editing: nil) }
                     .buttonStyle(PillButtonStyle(color: Theme.accent))
                 HStack(spacing: 8) {
-                    Button("Import project") { importProject() }
+                    Button(T("Import project")) { importProject() }
                         .buttonStyle(PillButtonStyle(color: Theme.control, foreground: Theme.text))
-                    Button("Import launch.json") { importLaunchJSON() }
+                    Button(T("Import launch.json")) { importLaunchJSON() }
                         .buttonStyle(PillButtonStyle(color: Theme.control, foreground: Theme.text))
                 }
             }
@@ -419,10 +419,10 @@ struct MenuContent: View {
         if manager.runningCount > 0 {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
-            alert.messageText = "Quit ServerHat?"
-            alert.informativeText = "It stops the \(manager.runningCount == 1 ? "server" : "\(manager.runningCount) servers") it's running."
-            alert.addButton(withTitle: "Quit")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = T("Quit ServerHat?")
+            alert.informativeText = manager.runningCount == 1 ? T("It stops the server it's running.") : T("It stops the {0} servers it's running.", manager.runningCount)
+            alert.addButton(withTitle: T("Quit"))
+            alert.addButton(withTitle: T("Cancel"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         NSApplication.shared.terminate(nil)
@@ -438,8 +438,8 @@ struct MenuContent: View {
 
     private func importLaunchJSON() {
         let panel = NSOpenPanel()
-        panel.title = "Import servers from .claude/launch.json"
-        panel.message = "Choose a project folder or its .claude/launch.json file."
+        panel.title = T("Import servers from .claude/launch.json")
+        panel.message = T("Choose a project folder or its .claude/launch.json file.")
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.json, .folder]
@@ -449,30 +449,30 @@ struct MenuContent: View {
         let alert = NSAlert()
         do {
             let added = try manager.importLaunchJSON(at: url.path, approved: true)
-            alert.messageText = added.isEmpty ? "Nothing new to import" : "Imported \(added.count) server\(added.count == 1 ? "" : "s")"
-            alert.informativeText = added.isEmpty ? "Every configuration in that launch.json is already in ServerHat." : added.map(\.name).joined(separator: ", ")
+            alert.messageText = added.isEmpty ? T("Nothing new to import") : (added.count == 1 ? T("Imported 1 server") : T("Imported {0} servers", added.count))
+            alert.informativeText = added.isEmpty ? T("Every configuration in that launch.json is already in ServerHat.") : added.map(\.name).joined(separator: ", ")
         } catch {
-            alert.messageText = "Couldn't import"
-            alert.informativeText = error.localizedDescription
+            alert.messageText = T("Couldn't import")
+            alert.informativeText = Loc.auto(error.localizedDescription)
         }
         alert.runModal()
     }
 
     private func importProject() {
         let panel = NSOpenPanel()
-        panel.title = "Import project servers"
-        panel.message = "Choose a project folder. ServerHat looks for package.json, Procfile, and Docker Compose files."
+        panel.title = T("Import project servers")
+        panel.message = T("Choose a project folder. ServerHat looks for package.json, Procfile, and Docker Compose files.")
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let alert = NSAlert()
         do {
             let added = try manager.importProject(at: url.path, approved: true)
-            alert.messageText = added.isEmpty ? "Nothing new to import" : "Imported \(added.count) server\(added.count == 1 ? "" : "s")"
-            alert.informativeText = added.isEmpty ? "Those project commands are already in ServerHat." : added.map { "\($0.name): \($0.command) \($0.args.joined(separator: " "))" }.joined(separator: "\n")
+            alert.messageText = added.isEmpty ? T("Nothing new to import") : (added.count == 1 ? T("Imported 1 server") : T("Imported {0} servers", added.count))
+            alert.informativeText = added.isEmpty ? T("Those project commands are already in ServerHat.") : added.map { "\($0.name): \($0.command) \($0.args.joined(separator: " "))" }.joined(separator: "\n")
         } catch {
-            alert.messageText = "Couldn't import project"
-            alert.informativeText = error.localizedDescription
+            alert.messageText = T("Couldn't import project")
+            alert.informativeText = Loc.auto(error.localizedDescription)
         }
         alert.runModal()
     }
@@ -500,16 +500,16 @@ struct ServerRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(server.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                         .layoutPriority(1).help(server.name)
-                    Text(isActive ? "Changed. Allow the new settings to restart it." : "New. Allow it to run this command?")
+                    Text(isActive ? T("Changed. Allow the new settings to restart it.") : T("New. Allow it to run this command?"))
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.orange)
                 }
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(ApprovalPrompt.commandLine(server))
                     .font(.system(size: 12, design: .monospaced)).lineLimit(3).textSelection(.enabled)
-                Text("in \(server.cwd)").font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1).truncationMode(.middle)
+                Text(T("in {0}", server.cwd)).font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1).truncationMode(.middle)
                 if !server.env.isEmpty {
-                    Text("with " + server.env.keys.sorted().joined(separator: ", "))
+                    Text(T("with {0}", server.env.keys.sorted().joined(separator: ", ")))
                         .font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
             }
@@ -517,14 +517,14 @@ struct ServerRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.control))
             HStack(spacing: 8) {
-                Button("Allow") {
+                Button(T("Allow")) {
                     manager.approve(server.id)
                     manager.startAndOpen(server.id)
                 }
                 .buttonStyle(TintButtonStyle(color: Theme.accent))
-                Button("Remove") { confirmRemove() }.buttonStyle(TintButtonStyle(color: Theme.red))
+                Button(T("Remove")) { confirmRemove() }.buttonStyle(TintButtonStyle(color: Theme.red))
                 Spacer()
-                Button("Edit…") { EditWindowController.show(manager: manager, editing: server) }
+                Button(T("Edit…")) { EditWindowController.show(manager: manager, editing: server) }
                     .buttonStyle(TintButtonStyle(color: Theme.secondary))
             }
         }
@@ -555,7 +555,7 @@ struct ServerRow: View {
                         .foregroundStyle(Theme.accent)
                     }
                     .buttonStyle(.plain)
-                    .help("Open \(url.absoluteString)")
+                    .help(T("Open {0}", url.absoluteString))
                 } else {
                     Text(detailText)
                         .font(.system(size: 12, weight: .medium))
@@ -571,31 +571,31 @@ struct ServerRow: View {
                 if state.status == .running || state.status == .unhealthy {
                     Button { try? manager.restart(server.id) } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(CircleButtonStyle(size: 28))
-                        .help("Restart").accessibilityLabel("Restart \(server.name)")
+                        .help(T("Restart")).accessibilityLabel(T("Restart {0}", server.name))
                 }
                 if isActive {
                     Button { manager.stop(server.id) } label: { Image(systemName: "stop.fill") }
                         .buttonStyle(CircleButtonStyle(size: 28))
-                        .help("Stop").accessibilityLabel("Stop \(server.name)")
+                        .help(T("Stop")).accessibilityLabel(T("Stop {0}", server.name))
                 } else {
                     Button { manager.startAndOpen(server.id) } label: { Image(systemName: "play.fill") }
                         .buttonStyle(CircleButtonStyle(size: 28, foreground: Theme.accent))
                         .disabled(state.status == .portInUse)
-                        .help("Start").accessibilityLabel("Start \(server.name)")
+                        .help(T("Start")).accessibilityLabel(T("Start {0}", server.name))
                 }
                 Menu {
                     if let url = server.openURL {
-                        Button("Open in browser") { NSWorkspace.shared.open(url) }
+                        Button(T("Open in browser")) { NSWorkspace.shared.open(url) }
                     }
-                    Button("View logs") { LogWindowController.show(manager: manager, server: server) }
-                    Button("Edit…") { EditWindowController.show(manager: manager, editing: server) }
-                    Button("Show folder in Finder") { NSWorkspace.shared.open(server.workingDirectory) }
+                    Button(T("View logs")) { LogWindowController.show(manager: manager, server: server) }
+                    Button(T("Edit…")) { EditWindowController.show(manager: manager, editing: server) }
+                    Button(T("Show folder in Finder")) { NSWorkspace.shared.open(server.workingDirectory) }
                     if state.status == .portInUse, let pid = state.pid {
                         Divider()
-                        Button("Stop process using port \(String(server.port ?? 0))…") { confirmKill(pid) }
+                        Button(T("Stop process using port {0}…", String(server.port ?? 0))) { confirmKill(pid) }
                     }
                     Divider()
-                    Button("Remove…") { confirmRemove() }
+                    Button(T("Remove…")) { confirmRemove() }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 12, weight: .semibold))
@@ -604,13 +604,13 @@ struct ServerRow: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Server menu").accessibilityLabel("Server menu for \(server.name)")
+                .help(T("Server menu")).accessibilityLabel(T("Server menu for {0}", server.name))
             }
         }
         .contentShape(Rectangle())
         .contextMenu {
-            Button("View logs") { LogWindowController.show(manager: manager, server: server) }
-            Button("Edit…") { EditWindowController.show(manager: manager, editing: server) }
+            Button(T("View logs")) { LogWindowController.show(manager: manager, server: server) }
+            Button(T("Edit…")) { EditWindowController.show(manager: manager, editing: server) }
         }
     }
 
@@ -625,19 +625,19 @@ struct ServerRow: View {
 
     private var statusText: String {
         switch state.status {
-        case .stopped: return "Stopped"
-        case .starting: return "Starting…"
-        case .running: return "Running"
-        case .unhealthy: return "Unhealthy"
-        case .stopping: return "Stopping…"
-        case .crashed: return "Crashed"
-        case .portInUse: return "Port in use"
-        case .failed: return "Couldn't start"
+        case .stopped: return T("Stopped")
+        case .starting: return T("Starting…")
+        case .running: return T("Running")
+        case .unhealthy: return T("Unhealthy")
+        case .stopping: return T("Stopping…")
+        case .crashed: return T("Crashed")
+        case .portInUse: return T("Port in use")
+        case .failed: return T("Couldn't start")
         }
     }
 
     private var detailText: String {
-        let detail = state.detail ?? statusText
+        let detail = state.detail.map(Loc.auto) ?? statusText
         guard state.detail == nil, state.status != .running, let port = server.port else { return detail }
         return "\(detail) · :\(port)"
     }
@@ -665,20 +665,20 @@ struct ServerRow: View {
     private func confirmRemove() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Remove \(server.name)?"
-        alert.informativeText = "ServerHat stops it if it's running and forgets its settings. Its folder isn't touched."
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = T("Remove {0}?", server.name)
+        alert.informativeText = T("ServerHat stops it if it's running and forgets its settings. Its folder isn't touched.")
+        alert.addButton(withTitle: T("Remove"))
+        alert.addButton(withTitle: T("Cancel"))
         if alert.runModal() == .alertFirstButtonReturn { try? manager.remove(server.id) }
     }
 
     private func confirmKill(_ pid: pid_t) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Stop the process using port \(server.port ?? 0)?"
-        alert.informativeText = (state.detail ?? "") + "\n\nServerHat didn't start it. It will be asked to quit (SIGTERM)."
-        alert.addButton(withTitle: "Stop It")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = T("Stop the process using port {0}?", server.port ?? 0)
+        alert.informativeText = (state.detail.map(Loc.auto) ?? "") + "\n\n" + T("ServerHat didn't start it. It will be asked to quit (SIGTERM).")
+        alert.addButton(withTitle: T("Stop It"))
+        alert.addButton(withTitle: T("Cancel"))
         if alert.runModal() == .alertFirstButtonReturn { kill(pid, SIGTERM) }
     }
 }
@@ -695,13 +695,13 @@ enum ApprovalPrompt {
         guard manager.needsApproval(server.id) else { return }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Allow \(server.name) to run?"
-        var details = "Command: \(commandLine(server))\nFolder: \(server.cwd)"
-        if !server.env.isEmpty { details += "\nEnvironment: " + server.env.keys.sorted().joined(separator: ", ") }
-        alert.informativeText = details + "\n\nIt was added or changed through ServerHat's API (for example by Claude Code or Codex) or in servers.json. It will run as you."
-        alert.addButton(withTitle: "Allow")
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Later")
+        alert.messageText = T("Allow {0} to run?", server.name)
+        var details = T("Command: {0}", commandLine(server)) + "\n" + T("Folder: {0}", server.cwd)
+        if !server.env.isEmpty { details += "\n" + T("Environment: {0}", server.env.keys.sorted().joined(separator: ", ")) }
+        alert.informativeText = details + "\n\n" + T("It was added or changed through ServerHat's API (for example by Claude Code or Codex) or in servers.json. It will run as you.")
+        alert.addButton(withTitle: T("Allow"))
+        alert.addButton(withTitle: T("Remove"))
+        alert.addButton(withTitle: T("Later"))
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             manager.approve(server.id)
@@ -726,7 +726,7 @@ enum LogWindowController {
         let view = LogView(log: manager.log(server.id), manager: manager, id: server.id)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 480),
                               styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "\(server.name) — Logs"
+        window.title = T("{0} — Logs", server.name)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: view)
         window.center()
@@ -750,10 +750,10 @@ struct LogView: View {
             LogTextView(text: log.lines.joined(separator: "\n"), revision: log.revision)
             Divider()
             HStack {
-                Text(manager.state(id).detail ?? manager.state(id).status.rawValue).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(manager.state(id).detail.map(Loc.auto) ?? T(manager.state(id).status.rawValue.capitalized)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
-                Button("Clear") { log.clear() }
-                Button("Open log file") { NSWorkspace.shared.open(log.fileURL) }
+                Button(T("Clear")) { log.clear() }
+                Button(T("Open log file")) { NSWorkspace.shared.open(log.fileURL) }
             }
             .padding(8)
         }
@@ -792,7 +792,7 @@ enum EditWindowController {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 470),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         let view = EditView(manager: manager, original: editing, form: EditForm(editing)) { window.close() }
-        window.title = editing == nil ? "Add Server" : "Edit \(editing!.name)"
+        window.title = editing == nil ? T("Add Server") : T("Edit {0}", editing!.name)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: view)
         window.center()
@@ -839,41 +839,41 @@ struct EditView: View {
 
     var body: some View {
         Form {
-            TextField("Name", text: $form.name)
+            TextField(T("Name"), text: $form.name)
             HStack {
-                TextField("Folder", text: $form.cwd)
-                Button("Choose…") { chooseFolder() }
+                TextField(T("Folder"), text: $form.cwd)
+                Button(T("Choose…")) { chooseFolder() }
             }
-            TextField("Command", text: $form.command, prompt: Text("node, npm, python3, or a path"))
-            TextField("Arguments", text: $form.args, prompt: Text("server.mjs --port 4319"))
-            TextField("Port", text: $form.port, prompt: Text("optional"))
-            TextField("URL", text: $form.url, prompt: Text("optional, defaults to http://127.0.0.1:<port>"))
-            TextField("Ready when response contains", text: $form.healthContains,
-                      prompt: Text("optional; for example, a known page title"))
+            TextField(T("Command"), text: $form.command, prompt: Text(T("node, npm, python3, or a path")))
+            TextField(T("Arguments"), text: $form.args, prompt: Text("server.mjs --port 4319"))
+            TextField(T("Port"), text: $form.port, prompt: Text(T("optional")))
+            TextField("URL", text: $form.url, prompt: Text(T("optional, defaults to http://127.0.0.1:<port>")))
+            TextField(T("Ready when response contains"), text: $form.healthContains,
+                      prompt: Text(T("optional; for example, a known page title")))
             VStack(alignment: .leading, spacing: 4) {
-                Text("Environment (one NAME=value per line)").font(.caption).foregroundStyle(.secondary)
+                Text(T("Environment (one NAME=value per line)")).font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $form.env).font(.system(.body, design: .monospaced)).frame(height: 70)
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
             }
-            Toggle("Start this server when ServerHat starts", isOn: $form.startAtLogin)
-            Toggle("Restart automatically after a crash", isOn: $form.restartOnCrash)
+            Toggle(T("Start this server when ServerHat starts"), isOn: $form.startAtLogin)
+            Toggle(T("Restart automatically after a crash"), isOn: $form.restartOnCrash)
             if form.restartOnCrash {
                 HStack {
-                    Text("Maximum restart attempts")
+                    Text(T("Maximum restart attempts"))
                     Spacer()
                     TextField("3", text: $form.restartLimit).frame(width: 55)
                 }
             }
             if form.startAtLogin {
-                Toggle("Open ServerHat at login", isOn: $form.openAtLogin)
+                Toggle(T("Open ServerHat at login"), isOn: $form.openAtLogin)
                     .onChange(of: form.openAtLogin) { setOpenAtLogin($0) }
             }
             if let error = form.error { Text(error).foregroundStyle(.red).font(.callout) }
             HStack {
-                Text("Arguments split on spaces; use quotes for spaces inside one.").font(.caption).foregroundStyle(.secondary)
+                Text(T("Arguments split on spaces; use quotes for spaces inside one.")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Cancel", action: close).keyboardShortcut(.cancelAction)
-                Button(original == nil ? "Add" : "Save", action: save).keyboardShortcut(.defaultAction)
+                Button(T("Cancel"), action: close).keyboardShortcut(.cancelAction)
+                Button(original == nil ? T("Add") : T("Save"), action: save).keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
@@ -883,11 +883,11 @@ struct EditView: View {
     private func save() {
         var environment: [String: String] = [:]
         for line in form.env.split(separator: "\n") where !line.trimmingCharacters(in: .whitespaces).isEmpty {
-            guard let eq = line.firstIndex(of: "=") else { form.error = "Environment line \"\(line)\" needs NAME=value."; return }
+            guard let eq = line.firstIndex(of: "=") else { form.error = T("Environment line \"{0}\" needs NAME=value.", line); return }
             environment[String(line[..<eq]).trimmingCharacters(in: .whitespaces)] = String(line[line.index(after: eq)...])
         }
         let portNumber = form.port.trimmingCharacters(in: .whitespaces)
-        if !portNumber.isEmpty && Int(portNumber) == nil { form.error = "Port must be a number."; return }
+        if !portNumber.isEmpty && Int(portNumber) == nil { form.error = T("Port must be a number."); return }
         let config = ServerConfig(id: original?.id ?? "", name: form.name.trimmingCharacters(in: .whitespaces), cwd: form.cwd,
                                   command: form.command.trimmingCharacters(in: .whitespaces), args: EditView.splitArguments(form.args),
                                   port: Int(portNumber), url: form.url.isEmpty ? nil : form.url,
@@ -899,7 +899,7 @@ struct EditView: View {
             if let original { try manager.update(original.id, to: config, approved: true) } else { try manager.add(config, approved: true) }
             close()
         } catch {
-            form.error = error.localizedDescription
+            form.error = Loc.auto(error.localizedDescription)
         }
     }
 
@@ -914,9 +914,9 @@ struct EditView: View {
         do {
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            form.error = error.localizedDescription
+            form.error = Loc.auto(error.localizedDescription)
         }
-        if SMAppService.mainApp.status == .requiresApproval { form.error = "Allow ServerHat in System Settings → General → Login Items." }
+        if SMAppService.mainApp.status == .requiresApproval { form.error = T("Allow ServerHat in System Settings → General → Login Items.") }
     }
 
     /// Splits like a shell would for simple cases: spaces separate, quotes group.
@@ -960,7 +960,7 @@ final class SettingsWindowController {
         hosting.sizingOptions = [.preferredContentSize]
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .closable]
-        window.title = "ServerHat Settings"
+        window.title = T("ServerHat Settings")
         window.isReleasedWhenClosed = false
         window.center()
         self.window = window
@@ -1021,7 +1021,7 @@ struct SettingsView: View {
             ForEach(SettingsTab.Tab.allCases, id: \.self) { item in
                 let selected = item == tab.current
                 Button { tab.current = item } label: {
-                    Text(item.rawValue)
+                    Text(T(item.rawValue))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(selected ? Theme.text : Theme.secondary)
                         .frame(maxWidth: .infinity)
@@ -1044,12 +1044,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Open ServerHat at login").font(.system(size: 13, weight: .semibold))
-                        Text("Servers set to start with ServerHat start too.")
+                        Text(T("Open ServerHat at login")).font(.system(size: 13, weight: .semibold))
+                        Text(T("Servers set to start with ServerHat start too."))
                             .font(.system(size: 11)).foregroundStyle(Theme.secondary)
                     }
                     Spacer()
-                    Toggle("Open ServerHat at login", isOn: Binding(get: { login.enabled }, set: { login.set($0) }))
+                    Toggle(T("Open ServerHat at login"), isOn: Binding(get: { login.enabled }, set: { login.set($0) }))
                         .toggleStyle(.switch).labelsHidden()
                 }
                 if let problem = login.problem {
@@ -1061,26 +1061,26 @@ struct SettingsView: View {
 
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Approve new servers").font(.system(size: 13, weight: .semibold))
-                    Text("Ask me before a server added or changed by Claude or ChatGPT can run.")
+                    Text(T("Approve new servers")).font(.system(size: 13, weight: .semibold))
+                    Text(T("Ask me before a server added or changed by Claude or ChatGPT can run."))
                         .font(.system(size: 11)).foregroundStyle(Theme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Toggle("Approve new servers", isOn: $manager.requireApproval)
+                Toggle(T("Approve new servers"), isOn: $manager.requireApproval)
                     .toggleStyle(.switch).labelsHidden()
             }
             .card(padding: 12)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Use from Claude Code or Codex").font(.system(size: 13, weight: .semibold))
-                Text("Copies the command that adds ServerHat's MCP tools. Paste it in Terminal.")
+                Text(T("Use from Claude Code or Codex")).font(.system(size: 13, weight: .semibold))
+                Text(T("Copies the command that adds ServerHat's MCP tools. Paste it in Terminal."))
                     .font(.system(size: 11)).foregroundStyle(Theme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Button("Copy for Claude Code") { copyMCP(client: "claude", label: "Claude Code") }
+                    Button(T("Copy for Claude Code")) { copyMCP(client: "claude", label: "Claude Code") }
                         .buttonStyle(TintButtonStyle(color: Theme.accent))
-                    Button("Copy for Codex") { copyMCP(client: "codex", label: "Codex") }
+                    Button(T("Copy for Codex")) { copyMCP(client: "codex", label: "Codex") }
                         .buttonStyle(TintButtonStyle(color: Theme.accent))
                 }
                 if let copied = note.text {
@@ -1091,18 +1091,18 @@ struct SettingsView: View {
             .card(padding: 12)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Your servers").font(.system(size: 13, weight: .semibold))
-                Text("Save them to a file, or edit servers.json directly. ServerHat reloads it on save.")
+                Text(T("Your servers")).font(.system(size: 13, weight: .semibold))
+                Text(T("Save them to a file, or edit servers.json directly. ServerHat reloads it on save."))
                     .font(.system(size: 11)).foregroundStyle(Theme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     // A Menu ignores button styles, so its label is drawn like TintButtonStyle.
                     Menu {
-                        Button("Export servers…") { exportServers(includeEnvironment: false) }
-                        Button("Export with environment values…") { exportServers(includeEnvironment: true) }
+                        Button(T("Export servers…")) { exportServers(includeEnvironment: false) }
+                        Button(T("Export with environment values…")) { exportServers(includeEnvironment: true) }
                     } label: {
                         HStack(spacing: 4) {
-                            Text("Export")
+                            Text(T("Export"))
                             Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
                         }
                         .font(.system(size: 12, weight: .semibold))
@@ -1113,7 +1113,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain).fixedSize()
                     .disabled(manager.servers.isEmpty)
-                    Button("Edit servers.json") { NSWorkspace.shared.open(manager.configFileURL) }
+                    Button(T("Edit servers.json")) { NSWorkspace.shared.open(manager.configFileURL) }
                         .buttonStyle(TintButtonStyle(color: Theme.accent))
                 }
             }
@@ -1129,17 +1129,17 @@ struct SettingsView: View {
             }
             VStack(spacing: 4) {
                 Text("ServerHat").font(.title2).bold()
-                Text("Version \(appVersion)").foregroundStyle(.secondary)
-                Text("Your local web servers, one click away.").font(.headline)
+                Text(T("Version {0}", appVersion)).foregroundStyle(.secondary)
+                Text(T("Your local web servers, one click away.")).font(.headline)
             }
-            Text("Free and open source (MIT). No account, no analytics.")
+            Text(T("Free and open source (MIT). No account, no analytics."))
                 .font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 2)
             Link(destination: donationURL) {
-                Label("Support GuruHat", systemImage: "heart.fill").frame(maxWidth: .infinity)
+                Label(T("Support GuruHat"), systemImage: "heart.fill").frame(maxWidth: .infinity)
             }
             .foregroundStyle(Theme.accent)
-            Text("Donations keep GuruHat apps free. Thank you!")
+            Text(T("Donations keep GuruHat apps free. Thank you!"))
                 .font(.caption).foregroundStyle(.secondary)
             Link("guruhat.com", destination: URL(string: "https://guruhat.com")!).font(.caption).foregroundStyle(Theme.accent)
         }
@@ -1147,7 +1147,7 @@ struct SettingsView: View {
 
     private func exportServers(includeEnvironment: Bool) {
         let panel = NSSavePanel()
-        panel.title = includeEnvironment ? "Export servers with environment values" : "Export servers"
+        panel.title = includeEnvironment ? T("Export servers with environment values") : T("Export servers")
         panel.nameFieldStringValue = "ServerHat-servers.json"
         panel.allowedContentTypes = [.json]
         panel.canCreateDirectories = true
@@ -1164,15 +1164,15 @@ struct SettingsView: View {
             data.append(0x0A)
             try data.write(to: url, options: .atomic)
             let alert = NSAlert()
-            alert.messageText = "Servers exported"
+            alert.messageText = T("Servers exported")
             alert.informativeText = includeEnvironment
-                ? "The export includes environment values. Treat the file as potentially sensitive."
-                : "Environment values were omitted from the export."
+                ? T("The export includes environment values. Treat the file as potentially sensitive.")
+                : T("Environment values were omitted from the export.")
             alert.runModal()
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Couldn't export servers"
-            alert.informativeText = error.localizedDescription
+            alert.messageText = T("Couldn't export servers")
+            alert.informativeText = Loc.auto(error.localizedDescription)
             alert.runModal()
         }
     }
@@ -1187,6 +1187,6 @@ struct SettingsView: View {
             : "codex mcp add serverhat -- \(ServerManager.shellQuoted(binary)) --mcp"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
-        note.show("Copied. Paste it in Terminal to add ServerHat to \(label).")
+        note.show(T("Copied. Paste it in Terminal to add ServerHat to {0}.", label))
     }
 }

@@ -230,3 +230,59 @@ private func project(_ files: [String: String]) throws -> URL {
         #expect(throws: (any Error).self) { try ProjectImporter.suggestions(from: root.path) }
     }
 }
+
+// MARK: Languages
+
+@Suite struct Languages {
+    @Test func picksTheFirstLanguageServerHatHas() {
+        #expect(Loc.pick(from: ["de-AT", "en"]) == "de")
+        #expect(Loc.pick(from: ["it-IT", "fr-FR"]) == "fr")
+        #expect(Loc.pick(from: ["pt-BR"]) == "pt")
+        #expect(Loc.pick(from: ["es-419"]) == "es")
+        #expect(Loc.pick(from: ["ja-JP"]) == "ja")
+        #expect(Loc.pick(from: ["ko-KR"]) == "ko")
+    }
+
+    @Test func englishFirstStaysEnglish() {
+        #expect(Loc.pick(from: ["en-GB", "de"]) == "en")
+        #expect(Loc.pick(from: ["it-IT"]) == "en")
+        #expect(Loc.pick(from: []) == "en")
+    }
+
+    @Test func chineseNeedsTheSimplifiedScript() {
+        #expect(Loc.pick(from: ["zh-Hans-CN"]) == "zh-Hans")
+        #expect(Loc.pick(from: ["zh-Hant-TW", "en"]) == "en")
+        #expect(Loc.pick(from: ["zh-Hant-HK", "ko"]) == "ko")
+    }
+
+    @Test func fillsPlaceholdersOnce() {
+        #expect(Loc.fill("{0} of {1}", ["a", "{1}"]) == "a of {1}")
+        #expect(Loc.fill("no placeholders", ["x"]) == "no placeholders")
+        #expect(Loc.fill("{2} stays", ["x"]) == "{2} stays")
+    }
+
+    @Test func everyLanguageHasTheSameKeysAndPlaceholders() {
+        func placeholders(_ text: String) -> [String] {
+            ["{0}", "{1}", "{2}", "{3}"].filter { text.contains($0) }
+        }
+        let languages = Loc.tables
+        #expect(languages.count == 7)
+        let keys = Set(languages.values.first!.keys)
+        for (code, table) in languages {
+            #expect(Set(table.keys) == keys, "\(code) has a different set of strings")
+            for (english, translated) in table {
+                #expect(placeholders(english) == placeholders(translated), "\(code): \(english)")
+                #expect(!translated.isEmpty)
+            }
+        }
+    }
+
+    @Test func translatesSentencesBuiltInEnglish() {
+        #expect(Loc.translate("Port 3000 is already in use.", to: "es") == "El puerto 3000 ya está en uso.")
+        #expect(Loc.translate("Port 3000 is in use by node (pid 42).", to: "de") == "Port 3000 wird von node verwendet (PID 42).")
+        #expect(Loc.translate("Crashed with exit code 1. Automatic restart limit reached.", to: "fr")
+                == Loc.translate("Crashed with exit code 1.", to: "fr") + " " + Loc.translate("Automatic restart limit reached.", to: "fr"))
+        #expect(Loc.translate("Something nobody translated.", to: "ko") == "Something nobody translated.")
+        #expect(Loc.translate("Port 3000 is already in use.", to: "en") == "Port 3000 is already in use.")
+    }
+}

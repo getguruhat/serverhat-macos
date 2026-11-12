@@ -43,7 +43,13 @@ check "icon is bundled" '[[ -f "$APP/Contents/Resources/icon.png" && -f "$APP/Co
 print "== Settings window"
 SHOTS="$ROOT/release-check"
 rm -rf "$SHOTS"
-SERVERHAT_SUPPORT_FOLDER="$WORK/support" "$APP/Contents/MacOS/ServerHat" --snapshot "$SHOTS" || FAILED=1
+# Run the snapshot from a copy with its own bundle ID. With the real one, macOS can point the
+# "Open at login" item at this temporary copy, which is deleted, so ServerHat stops starting at login.
+SNAP="$WORK/ServerHatCheck.app"
+ditto "$APP" "$SNAP"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.guruhat.serverhat.releasecheck" "$SNAP/Contents/Info.plist"
+codesign --force --sign - "$SNAP" >/dev/null 2>&1
+SERVERHAT_SUPPORT_FOLDER="$WORK/support" "$SNAP/Contents/MacOS/ServerHat" --snapshot "$SHOTS" || FAILED=1
 
 print "Screenshots: $SHOTS (look at them before publishing)"
 if (( FAILED )); then print "== Release check FAILED"; exit 1; fi

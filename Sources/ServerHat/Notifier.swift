@@ -21,13 +21,13 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func crashed(_ server: ServerConfig, detail: String) {
-        post(.crash, server: server, title: "\(server.name) crashed", body: detail + " Click to see its log.")
+        post(.crash, server: server, title: T("{0} crashed", server.name), body: Loc.auto(detail) + " " + T("Click to see its log."))
     }
 
     func approvalNeeded(_ server: ServerConfig) {
         let command = ([server.command] + server.args).map(ServerManager.shellQuoted).joined(separator: " ")
-        post(.approval, server: server, title: "Review command for \(server.name)",
-             body: "\(command)\nin \(server.cwd). Click to review and allow.")
+        post(.approval, server: server, title: T("Review command for {0}", server.name),
+             body: T("{0}\nin {1}. Click to review and allow.", command, server.cwd))
     }
 
     private func post(_ kind: Kind, server: ServerConfig, title: String, body: String) {
