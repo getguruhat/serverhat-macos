@@ -9,7 +9,7 @@ work (a Node script, `npm run dev`, `python3 -m http.server`, anything with a co
 line), so you never have to keep a Terminal tab open for them. It also has a local API,
 so Claude Code, Codex or your own scripts can add and control servers for you.
 
-<img src="docs/menu.png" width="360" alt="ServerHat's menu: three servers running with their addresses, one stopped, and one waiting for approval with its command, folder and environment names, and Allow and Remove"> <img src="docs/menu-dark.png" width="360" alt="The same menu in dark mode">
+<img src="docs/menu.png" width="360" alt="ServerHat's menu: three servers running with their addresses and one stopped"> <img src="docs/menu-dark.png" width="360" alt="The same menu in dark mode">
 
 ## What it does
 
