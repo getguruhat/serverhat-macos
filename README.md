@@ -148,6 +148,9 @@ The agent then has `list_servers`, `get_server`, `start_server`, `stop_server`,
 and a failure comes back with the server's last lines of output. A server an agent adds or
 changes waits for you to allow it first (see [Approval](#approval)).
 
+To teach an agent when and how to use ServerHat, copy [`skills/serverhat`](skills/serverhat/SKILL.md)
+into `~/.claude/skills/` (Claude Code) or a project's `.claude/skills/`.
+
 `ServerHat --mcp` speaks MCP over stdin and stdout and drives the running app through
 the API below. It opens ServerHat if it isn't running, and it reads the token from the
 token file itself, so the token never goes into an MCP config.
